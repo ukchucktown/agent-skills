@@ -133,14 +133,32 @@ Who reads what:
 **Hard rules** are mechanical. They need no judgment about meaning, and they are
 safe on every sentence.
 
-The ID is ours. It appears in linter output and in `hard-rules.md`. The last
-column gives the rule number in Part 1 of ASD-STE100, Issue 9, so that you can
-compare our rule with the rule there. A number such as `3.5` is a numbered
-rule. `GR-7` is a general recommendation, which the specification lists after
-rule 9.4 rather than as a numbered rule. `ours` marks a rule with no equivalent
-in the specification.
+The **ID** is ours. It appears in linter output and in `hard-rules.md`.
 
-| ID | Rule | ASD-STE100 |
+The **cited rule** points into Part 1 of ASD-STE100, Issue 9, so that you can
+compare our rule with the rule there. Part 1 numbers its rules as
+`section.rule`, so `3.5` is the fifth rule of section 3, and the nine sections
+cover these topics:
+
+| Section | Topic |
+|---|---|
+| 1 | Words |
+| 2 | Noun clusters |
+| 3 | Verbs |
+| 4 | Sentences |
+| 5 | Instructions and steps |
+| 6 | Explanations |
+| 7 | Safety instructions |
+| 8 | Punctuation, and how to count words |
+| 9 | General practice |
+
+Two values in that column are not rule numbers:
+
+- `GR-7` is a general recommendation. Section 9 lists a small set of these
+  after rule 9.4, and they are not numbered rules.
+- `none` means the specification has no counterpart, and the rule is ours.
+
+| ID | Rule | Cited rule |
 |---|---|---|
 | H1 | No semicolons | 8.1 |
 | H2 | Active voice, with an agentless passive only in description | 3.6 |
@@ -158,11 +176,16 @@ in the specification.
 | H14 | An article or a demonstrative before a noun | 4.5 |
 | H15 | Three words maximum in a noun cluster | 2.1, 2.2 |
 | H16 | One term for one thing | 1.11, 9.4 |
-| H17 | No uppercase prose | ours |
+| H17 | No uppercase prose | none |
 | H18 | Gender-neutral language | GR-7 |
 
-We do not reproduce the text of any of these rules. Read a copy of the
-specification for that.
+H17 is ours because the specification gives no rules for formatting. Rule 7.1
+says so directly, and it points a writer at their own style guide instead. Every
+safety example in the specification appears in uppercase, which is a print
+convention of aerospace manuals rather than a rule, so we exclude it and say so.
+
+We do not reproduce the text of any rule. The topic words above are ours. Read a
+copy of the specification for the wording.
 
 **Soft targets** need judgment: sentence length, paragraph shape, word choice,
 connecting words, pronoun clarity, American spelling. They are targets. Meaning
