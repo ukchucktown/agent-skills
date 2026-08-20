@@ -11,7 +11,7 @@ It ships in three forms:
 
 | Form | Path | Use it for |
 |---|---|---|
-| Claude Code skill | `skills/first-read/` | Authoring and auditing, invoked with `/first-read` |
+| Agent skill | `skills/first-read/` | Authoring and auditing in any agent that reads skills, invoked with `/first-read` |
 | Claude Code output style | `output-styles/first-read.md` | The hard rules on every deliverable, with no invocation |
 | Portable prompt | `PROMPT.md` | Any other agent harness: Cursor, an SDK, an `AGENTS.md` |
 
@@ -133,7 +133,14 @@ Who reads what:
 **Hard rules** are mechanical. They need no judgment about meaning, and they are
 safe on every sentence.
 
-| | Rule | Source |
+The ID is ours. It appears in linter output and in `hard-rules.md`. The last
+column gives the rule number in Part 1 of ASD-STE100, Issue 9, so that you can
+compare our rule with the rule there. A number such as `3.5` is a numbered
+rule. `GR-7` is a general recommendation, which the specification lists after
+rule 9.4 rather than as a numbered rule. `ours` marks a rule with no equivalent
+in the specification.
+
+| ID | Rule | ASD-STE100 |
 |---|---|---|
 | H1 | No semicolons | 8.1 |
 | H2 | Active voice, with an agentless passive only in description | 3.6 |
@@ -153,6 +160,9 @@ safe on every sentence.
 | H16 | One term for one thing | 1.11, 9.4 |
 | H17 | No uppercase prose | ours |
 | H18 | Gender-neutral language | GR-7 |
+
+We do not reproduce the text of any of these rules. Read a copy of the
+specification for that.
 
 **Soft targets** need judgment: sentence length, paragraph shape, word choice,
 connecting words, pronoun clarity, American spelling. They are targets. Meaning
