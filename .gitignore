@@ -1,0 +1,10 @@
+# Guard. ASD owns the ASD-STE100 specification and any extraction of it.
+# That material lives outside this repository. See NOTICE.md.
+*.pdf
+markdown/
+extract_pdf_to_markdown.py
+
+# Local noise
+.DS_Store
+__pycache__/
+*.pyc
