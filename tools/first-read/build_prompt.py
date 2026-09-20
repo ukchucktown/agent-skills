@@ -2,9 +2,9 @@
 """Build PROMPT.md, the single-file bundle for other agent harnesses.
 
 The bundle is generated. Never edit PROMPT.md by hand. Edit the output style or
-the files in skills/first-read/references/, then run this script.
+the files in skills/writing/first-read/references/, then run this script.
 
-    python3 scripts/build_prompt.py
+    python3 tools/first-read/build_prompt.py
 
 Use the bundle where a harness accepts only one blob of text: a Cursor rule
 file, an AGENTS.md section, an SDK system prompt, or the system message of
@@ -15,14 +15,16 @@ import os
 import re
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STYLE = os.path.join(ROOT, "output-styles", "first-read.md")
-REFS = os.path.join(ROOT, "skills", "first-read", "references")
-OUT = os.path.join(ROOT, "PROMPT.md")
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STYLE = os.path.join(
+    ROOT, "integrations", "claude", "output-styles", "first-read.md"
+)
+REFS = os.path.join(ROOT, "skills", "writing", "first-read", "references")
+OUT = os.path.join(ROOT, "docs", "first-read", "PROMPT.md")
 
 HEADER = """<!-- GENERATED FILE. Do not edit.
-     Source: output-styles/first-read.md and skills/first-read/references/*.md
-     Rebuild: python3 scripts/build_prompt.py
+     Source: integrations/claude/output-styles/first-read.md and skills/writing/first-read/references/*.md
+     Rebuild: python3 tools/first-read/build_prompt.py
 -->
 
 # First Read

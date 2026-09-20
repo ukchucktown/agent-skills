@@ -1,6 +1,6 @@
 <!-- GENERATED FILE. Do not edit.
-     Source: output-styles/first-read.md and skills/first-read/references/*.md
-     Rebuild: python3 scripts/build_prompt.py
+     Source: integrations/claude/output-styles/first-read.md and skills/writing/first-read/references/*.md
+     Rebuild: python3 tools/first-read/build_prompt.py
 -->
 
 # First Read
@@ -496,7 +496,9 @@ plainer word names it less exactly, the exact word wins.
 | interconnect, join, couple, fasten, link | connect |
 | maintain | keep, hold |
 | mount, equip, refit | install |
-| need, require | is necessary |
+| need | is necessary |
+| required | necessary |
+| require, requires | no single word replaces this verb, so rewrite the sentence: "Y is necessary for X" |
 | observe, track, watch | monitor |
 | omit, exclude | do not include |
 | proceed, progress, resume | continue |

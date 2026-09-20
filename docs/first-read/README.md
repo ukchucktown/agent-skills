@@ -11,9 +11,9 @@ It ships in three forms:
 
 | Form | Path | Use it for |
 |---|---|---|
-| Agent skill | `skills/first-read/` | Authoring and auditing in any agent that reads skills, invoked with `/first-read` |
-| Claude Code output style | `output-styles/first-read.md` | The hard rules on every deliverable, with no invocation |
-| Portable prompt | `PROMPT.md` | Any other agent harness: Cursor, an SDK, an `AGENTS.md` |
+| Agent skill | `skills/writing/first-read/` | Authoring and auditing in any agent that reads skills, invoked with `/first-read` |
+| Claude Code output style | `integrations/claude/output-styles/first-read.md` | The hard rules on every deliverable, with no invocation |
+| Portable prompt | `docs/first-read/PROMPT.md` | Any other agent harness: Cursor, an SDK, an `AGENTS.md` |
 
 Scope: prose that another person reads later. Issues, PR descriptions, commit
 messages, specs, RFCs, ADRs, docs, release notes, runbooks, and explanations.
@@ -25,7 +25,7 @@ The skill installs with the [`skills`](https://github.com/vercel-labs/skills)
 CLI, which supports Claude Code and about seventy other agents:
 
 ```bash
-npx skills add ukchucktown/first-read --global --agent claude-code --copy --yes
+npx skills add ukchucktown/agent-skills --skill first-read --global --agent claude-code --copy --yes
 ```
 
 | Flag | Effect |
@@ -47,7 +47,7 @@ file:
 
 ```bash
 mkdir -p ~/.claude/output-styles
-cp output-styles/first-read.md ~/.claude/output-styles/
+cp integrations/claude/output-styles/first-read.md ~/.claude/output-styles/
 ```
 
 Requirements: Node 18 or later for the CLI, Python 3.8 or later for the linter.
@@ -78,7 +78,7 @@ deliverable. Without it, invoke `/first-read`.
 **Audit.**
 
 ```bash
-python3 skills/first-read/scripts/lint.py docs/upgrade.md --soft
+python3 skills/writing/first-read/scripts/lint.py docs/upgrade.md --soft
 ```
 
 The linter reports hard findings first and soft advice second. Each line gives
@@ -86,37 +86,40 @@ a location, a rule, and a fix. Use `--profile procedural` for a runbook, and
 `--json` for a machine-readable result. The exit code is 1 when there is a hard
 finding, so the linter works in a pre-commit hook or in CI.
 
-**Another harness.** Give `PROMPT.md` to the agent as a system prompt, a Cursor
-rule file, or a section of an `AGENTS.md`. The file is self-contained, refers to
-no other file, and costs about 6000 tokens. Cut the word-swap appendix for a
-smaller prompt.
+**Another harness.** Give `docs/first-read/PROMPT.md` to the agent as a system
+prompt, a Cursor rule file, or a section of an `AGENTS.md`. The file is
+self-contained, refers to no other file, and costs about 6000 tokens. Cut the
+word-swap appendix for a smaller prompt.
 
 ## How the pieces fit
 
 ```
 skills/
-  first-read/              the layout the skills CLI discovers
-    SKILL.md               entry point: the scope test and the two modes
-    references/
-      hard-rules.md        18 mechanical rules, each with software examples
-      soft-targets.md      13 targets, and the 8 anti-goals that keep them safe
-      word-swaps.md        about 230 swaps, and the domain words to keep
-      artifacts.md         2 profiles, and a note for each artifact type
-      audit.md             the check procedure and the report format
-    scripts/lint.py        checker for the mechanical rules
-output-styles/
+  writing/
+    first-read/            the layout the skills CLI discovers
+      SKILL.md             entry point: the scope test and the two modes
+      references/
+        hard-rules.md      18 mechanical rules, each with software examples
+        soft-targets.md    13 targets, and the 8 anti-goals that keep them safe
+        word-swaps.md      about 230 swaps, and the domain words to keep
+        artifacts.md       2 profiles, and a note for each artifact type
+        audit.md           the check procedure and the report format
+      scripts/lint.py      checker for the mechanical rules
+integrations/claude/output-styles/
   first-read.md            the hard tier only, always in context
-PROMPT.md                  generated bundle for other harnesses
-scripts/
+docs/first-read/
+  PROMPT.md                generated bundle for other harnesses
+  NOTICE.md                provenance and redistribution boundary
+tools/first-read/
   build_prompt.py          output style plus references, to PROMPT.md
+tests/first-read/
   test_lint.sh             self-test for the linter
-tests/fixtures/            compliant and non-compliant text
-NOTICE.md                  provenance, and the redistribution boundary
+  fixtures/                compliant and non-compliant text
 ```
 
-The directory is `skills/first-read/` because the `skills` CLI walks `skills/`
-and treats each child that holds a `SKILL.md` as one skill. The layout also
-leaves room for a second skill later.
+The directory is `skills/writing/first-read/` because the `skills` CLI searches
+below `skills/` and treats each directory that holds a `SKILL.md` as one skill.
+The layout also leaves room for more writing skills.
 
 Who reads what:
 
@@ -125,8 +128,8 @@ Who reads what:
 - The **skill** holds everything that needs judgment or a lookup. It loads on
   demand. `SKILL.md` tells the agent to skip `hard-rules.md` when the output
   style is already active, so the rules never load two times.
-- **`PROMPT.md`** is generated from the same two sources, so the three forms
-  cannot drift.
+- **`docs/first-read/PROMPT.md`** is generated from the same two sources, so the
+  three forms cannot drift.
 
 ## Two tiers
 
@@ -191,11 +194,11 @@ copy of the specification for the wording.
 connecting words, pronoun clarity, American spelling. They are targets. Meaning
 always wins.
 
-Read the anti-goals in `skills/first-read/references/soft-targets.md` before you
-apply a
-target. They exist because these targets are the ones that damage text when a
-writer applies them without thought. The first anti-goal is the important one:
-do not split a sentence that holds one idea to reach a word count.
+Read the anti-goals in
+`skills/writing/first-read/references/soft-targets.md` before you apply a target.
+They exist because these targets can damage text when a writer applies them
+without thought. The first anti-goal is the important one: do not split a
+sentence that holds one idea to reach a word count.
 
 ## What the linter checks
 
@@ -234,7 +237,8 @@ keywords.
   instructions, such as how to scope changes, write comments, and verify work.
 - An output style reaches the main conversation only. A subagent runs its own
   system prompt, so a subagent must read
-  `skills/first-read/references/hard-rules.md` itself, or receive `PROMPT.md`. A fork is the exception, because it inherits
+  `skills/writing/first-read/references/hard-rules.md` itself, or receive
+  `docs/first-read/PROMPT.md`. A fork is the exception, because it inherits
   the full system prompt of the parent.
 - A change of output style invalidates the prompt cache.
 - The skill description lists "pte", "STE", and "in plain technical English" as
@@ -243,22 +247,22 @@ keywords.
 ## Development
 
 ```bash
-./scripts/test_lint.sh              # 18 assertions: fixtures, and our own prose
-python3 scripts/build_prompt.py     # rebuild PROMPT.md after a reference edit
+./tests/first-read/test_lint.sh              # fixture and prose checks
+python3 tools/first-read/build_prompt.py     # rebuild PROMPT.md after a reference edit
 npx skills add . --agent claude-code --yes   # install this working copy
 ```
 
 The last command symlinks, so an edit here reaches the installed skill at once.
 Add `--copy` when you want a snapshot instead.
 
-`PROMPT.md` is generated. Never edit it by hand.
+`docs/first-read/PROMPT.md` is generated. Never edit it by hand.
 
 The repository obeys its own rules, and the self-test asserts that every prose
 file here passes the hard tier. A new rule therefore needs four edits:
 `hard-rules.md` or `soft-targets.md`, the output style when the rule is hard,
-`lint.py` when the rule is mechanical, and a fixture in `tests/fixtures/`.
+`lint.py` when the rule is mechanical, and a fixture in `tests/first-read/fixtures/`.
 
-The fixture counts in `scripts/test_lint.sh` are exact. A drop in the
+The fixture counts in `tests/first-read/test_lint.sh` are exact. A drop in the
 `violations.md` count means that a check no longer works. A rise in the
 `compliant.md` count means a new false positive.
 
@@ -274,5 +278,5 @@ this repository, because they belong to the Aerospace, Security and Defence
 Industries Association of Europe (ASD). `.gitignore` keeps a guard against a
 file of either kind.
 
-This project is not an ASD product. ASD does not endorse it. Read `NOTICE.md`
-for the full statement.
+This project is not an ASD product. ASD does not endorse it. Read
+`docs/first-read/NOTICE.md` for the full statement.

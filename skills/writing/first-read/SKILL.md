@@ -69,7 +69,7 @@ python3 ~/.claude/skills/first-read/scripts/lint.py path/to/file.md
 A clone of this repository holds the same script under the repository root:
 
 ```bash
-python3 skills/first-read/scripts/lint.py path/to/file.md
+python3 skills/writing/first-read/scripts/lint.py path/to/file.md
 ```
 
 Add `--soft` for the advisory checks. Add `--profile procedural` for a runbook
@@ -115,4 +115,5 @@ Rules adapted from ASD-STE100 Simplified Technical English, Issue 9, which is
 the property of the Aerospace, Security and Defence Industries Association of
 Europe (ASD). "ASD-STE100" and "Simplified Technical English" are ASD
 trademarks. This rule set is not an ASD product, and ASD does not endorse it.
-Read `NOTICE.md` in the repository root before you redistribute anything.
+In a repository clone, read `docs/first-read/NOTICE.md` before you redistribute
+anything.

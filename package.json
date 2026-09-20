@@ -1,0 +1,21 @@
+{
+  "name": "agent-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal cross-harness Agent Skills and deterministic workflow helpers",
+  "type": "module",
+  "scripts": {
+    "changeset": "changeset",
+    "check:first-read-prompt": "node scripts/check-first-read-prompt.mjs",
+    "release:version": "changeset version",
+    "test": "npm run validate:skills && npm run test:first-read && npm run check:first-read-prompt",
+    "test:first-read": "node scripts/test-first-read.mjs",
+    "validate:skills": "node scripts/validate-skills.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

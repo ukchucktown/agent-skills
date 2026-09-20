@@ -14,7 +14,7 @@ Use this when someone asks you to check text that already exists.
 3. **Run the linter.**
 
    ```
-   python3 skills/first-read/scripts/lint.py <path>...
+   python3 skills/writing/first-read/scripts/lint.py <path>...
    ```
 
    Add `--soft` for the advisory checks. Add `--profile procedural` when the

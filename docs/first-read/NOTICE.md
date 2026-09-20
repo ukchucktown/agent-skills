@@ -2,8 +2,9 @@
 
 ## What this repository contains
 
-Original work. The writing rules in `skills/`, `output-styles/`, and
-`PROMPT.md` are our own wording.
+Original work. The writing rules in `skills/writing/first-read/`,
+`integrations/claude/output-styles/`, and `docs/first-read/PROMPT.md` are our
+own wording.
 
 The rules are adapted from ASD-STE100 Simplified Technical English, Issue 9.
 A citation such as `(3.5)` gives the rule number in that specification, so that
