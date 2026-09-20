@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -90,13 +90,16 @@ test("start planning resolves the primary checkout from a task worktree", () => 
     repositoryRoot: "/projects/worktrees/widgets/integration-issue-1",
   });
   const create = plan.actions.find((action) => action.id === "create-worktree");
-  assert.equal(create.parameters.repositoryRoot, "/projects/widgets");
-  assert.equal(create.parameters.location, "/projects/worktrees/widgets");
+  assert.equal(create.parameters.repositoryRoot, join(machineConfig.checkoutRoot, "widgets"));
+  assert.equal(create.parameters.location, join(machineConfig.worktreeRoot, "widgets"));
   assert.equal(
     create.parameters.root,
-    "/projects/worktrees/widgets/issue-6-start-worktrees",
+    join(machineConfig.worktreeRoot, "widgets", "issue-6-start-worktrees"),
   );
-  assert.equal(plan.repositoryRoot, "/projects/worktrees/widgets/integration-issue-1");
+  assert.equal(
+    plan.repositoryRoot,
+    resolve("/projects/worktrees/widgets/integration-issue-1"),
+  );
 });
 
 test("start refuses open blockers, pull requests, and unreviewed assignment conflicts", () => {

@@ -207,15 +207,18 @@ test("workflow entry points declare the Node globals used by strict repository l
 });
 
 function workflowStep(workflow, name) {
+  workflow = workflow.replaceAll("\r\n", "\n");
   const marker = `      - name: ${name}\n`;
   const start = workflow.indexOf(marker);
   assert.notEqual(start, -1, `missing workflow step '${name}'`);
   const next = workflow.indexOf("\n      - name: ", start + marker.length);
   const text = workflow.slice(start, next === -1 ? workflow.length : next);
   const condition = text.match(/^        if: (.+)$/m)?.[1] ?? null;
+  const shell = text.match(/^        shell: (.+)$/m)?.[1] ?? null;
   const literal = text.match(/^        run: \|\n((?:          .*\n?)*)/m)?.[1] ?? null;
   return {
     condition,
+    shell,
     script: literal?.split("\n").map((line) => line.slice(10)).join("\n"),
   };
 }
@@ -227,6 +230,7 @@ test("the contract workflow gates both first setup and configured validation", a
   ), "utf8");
   const detection = workflowStep(workflow, "Detect first-time setup");
   assert.ok(detection.script);
+  assert.equal(detection.shell, "node {0}");
   assert.equal(
     workflowStep(workflow, "Validate pull request contract").condition,
     "steps.setup.outputs.configured == 'true'",
@@ -239,9 +243,11 @@ test("the contract workflow gates both first setup and configured validation", a
   const directory = await mkdtemp(join(tmpdir(), "agent-skills-contract-workflow-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const output = join(directory, "github-output");
+  const script = join(directory, "detect.cjs");
+  await writeFile(script, detection.script, "utf8");
   const runDetection = async () => {
     await writeFile(output, "", "utf8");
-    execFileSync("bash", ["-euo", "pipefail", "-c", detection.script], {
+    execFileSync(process.execPath, [script], {
       cwd: directory,
       env: { ...process.env, GITHUB_OUTPUT: output },
     });

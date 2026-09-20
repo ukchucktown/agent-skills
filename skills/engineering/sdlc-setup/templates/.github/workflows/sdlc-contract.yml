@@ -21,13 +21,11 @@ jobs:
 
       - name: Detect first-time setup
         id: setup
-        shell: bash
+        shell: node {0}
         run: |
-          if [[ -f .sdlc/base/.github/scripts/sdlc-pr-contract.mjs ]]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          fi
+          const { appendFileSync, existsSync } = require("node:fs");
+          const configured = existsSync(".sdlc/base/.github/scripts/sdlc-pr-contract.mjs");
+          appendFileSync(process.env.GITHUB_OUTPUT, `configured=${configured}\n`);
 
       - name: Validate pull request contract
         if: steps.setup.outputs.configured == 'true'
