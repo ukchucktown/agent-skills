@@ -23,6 +23,7 @@ const config = {
   autoMergeChildPullRequests: true,
   childMergeMethod: "merge",
   featureMergeMethod: "merge",
+  validationSetupCommands: [{ executable: "npm", args: ["ci", "--ignore-scripts"] }],
   childValidationCommands: [{ executable: "npm", args: ["test", "--", "--unit"] }],
   featureValidationCommands: [{ executable: "npm", args: ["test"] }],
   finalMergeApproval: "required",
@@ -157,7 +158,7 @@ test("a merged integration pull request closes its child issue", async () => {
   assert.deepEqual(api.closed, [2]);
 });
 
-test("validation commands remain structured and profile-specific", () => {
+test("validation setup runs before profile-specific checks", () => {
   const calls = [];
   runValidationCommands({
     config,
@@ -167,17 +168,25 @@ test("validation commands remain structured and profile-specific", () => {
       calls.push({ executable, args, options });
     },
   });
-  assert.deepEqual(calls, [{
-    executable: "npm",
-    args: ["test", "--", "--unit"],
-    options: { cwd: "/tmp/example", stdio: "inherit", shell: false },
-  }]);
+  assert.deepEqual(calls, [
+    {
+      executable: "npm",
+      args: ["ci", "--ignore-scripts"],
+      options: { cwd: "/tmp/example", stdio: "inherit", shell: false },
+    },
+    {
+      executable: "npm",
+      args: ["test", "--", "--unit"],
+      options: { cwd: "/tmp/example", stdio: "inherit", shell: false },
+    },
+  ]);
 });
 
 test("the generated frontmatter is readable by trusted workflow code", () => {
   const document = renderRepositoryDocument(config);
   const parsed = parseRepositoryConfig(document.replaceAll("\n", "\r\n"));
   assert.equal(parsed.stableBranch, "main");
+  assert.deepEqual(parsed.validationSetupCommands, config.validationSetupCommands);
   assert.deepEqual(parsed.featureValidationCommands, config.featureValidationCommands);
 });
 

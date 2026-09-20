@@ -107,6 +107,7 @@ export function renderRepositoryDocument(settings, existing) {
     "autoMergeChildPullRequests",
     "childMergeMethod",
     "featureMergeMethod",
+    "validationSetupCommands",
     "childValidationCommands",
     "featureValidationCommands",
     "finalMergeApproval",

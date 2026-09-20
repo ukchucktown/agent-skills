@@ -54,4 +54,5 @@ automation files. It creates or updates only the three configured labels.
 
 Use structured validation commands such as
 `{"executable":"npm","args":["test"]}`. Never put a shell string in the
-configuration.
+configuration. Put dependency restoration or other CI preparation in
+`validationSetupCommands`. Those commands run before either validation profile.

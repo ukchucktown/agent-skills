@@ -78,6 +78,7 @@ const settings = {
   childBranchPattern: "work/issue-{issue}-{slug}",
   childMergeMethod: "squash",
   featureMergeMethod: "merge",
+  validationSetupCommands: [{ executable: "npm", args: ["ci", "--ignore-scripts"] }],
   childValidationCommands: [{ executable: "npm", args: ["test", "--", "--unit"] }],
   featureValidationCommands: [{ executable: "npm", args: ["test"] }],
 };
@@ -119,6 +120,7 @@ test("setup preserves repository instructions and becomes idempotent", async (co
   const config = await readRepositoryConfig(currentFixture.repository);
   assert.equal(config.value.stableBranch, "develop");
   assert.equal(config.value.childMergeMethod, "squash");
+  assert.deepEqual(config.value.validationSetupCommands, settings.validationSetupCommands);
   assert.deepEqual(config.value.childValidationCommands, settings.childValidationCommands);
 
   const after = await snapshotFiles(fileAdapter);

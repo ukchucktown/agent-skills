@@ -13,6 +13,7 @@ export const repositoryDefaults = Object.freeze({
   autoMergeChildPullRequests: true,
   childMergeMethod: "squash",
   featureMergeMethod: "merge",
+  validationSetupCommands: [],
   childValidationCommands: [],
   featureValidationCommands: [],
   finalMergeApproval: "required",
@@ -114,7 +115,11 @@ export function validateRepositoryConfig(value) {
       throw new Error(`repository configuration '${key}' must be merge, squash, or rebase`);
     }
   }
-  for (const key of ["childValidationCommands", "featureValidationCommands"]) {
+  for (const key of [
+    "validationSetupCommands",
+    "childValidationCommands",
+    "featureValidationCommands",
+  ]) {
     if (!Array.isArray(config[key])) {
       throw new Error(`repository configuration '${key}' must be an array`);
     }
