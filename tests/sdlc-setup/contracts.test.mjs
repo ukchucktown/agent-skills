@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -203,11 +206,53 @@ test("workflow entry points declare the Node globals used by strict repository l
   assert.match(pullRequest, /\/\* global console, process \*\//);
 });
 
-test("the contract workflow permits its first setup pull request", async () => {
+function workflowStep(workflow, name) {
+  const marker = `      - name: ${name}\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `missing workflow step '${name}'`);
+  const next = workflow.indexOf("\n      - name: ", start + marker.length);
+  const text = workflow.slice(start, next === -1 ? workflow.length : next);
+  const condition = text.match(/^        if: (.+)$/m)?.[1] ?? null;
+  const literal = text.match(/^        run: \|\n((?:          .*\n?)*)/m)?.[1] ?? null;
+  return {
+    condition,
+    script: literal?.split("\n").map((line) => line.slice(10)).join("\n"),
+  };
+}
+
+test("the contract workflow gates both first setup and configured validation", async (context) => {
   const workflow = await readFile(new URL(
     "../../skills/engineering/sdlc-setup/templates/.github/workflows/sdlc-contract.yml",
     import.meta.url,
   ), "utf8");
-  assert.match(workflow, /Detect first-time setup/);
-  assert.match(workflow, /steps\.setup\.outputs\.configured == 'true'/);
+  const detection = workflowStep(workflow, "Detect first-time setup");
+  assert.ok(detection.script);
+  assert.equal(
+    workflowStep(workflow, "Validate pull request contract").condition,
+    "steps.setup.outputs.configured == 'true'",
+  );
+  const profileGate =
+    "steps.setup.outputs.configured == 'true' && steps.contract.outputs.profile != 'none'";
+  assert.equal(workflowStep(workflow, "Check out pull request code").condition, profileGate);
+  assert.equal(workflowStep(workflow, "Run configured validation").condition, profileGate);
+
+  const directory = await mkdtemp(join(tmpdir(), "agent-skills-contract-workflow-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const output = join(directory, "github-output");
+  const runDetection = async () => {
+    await writeFile(output, "", "utf8");
+    execFileSync("bash", ["-euo", "pipefail", "-c", detection.script], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_OUTPUT: output },
+    });
+    return readFile(output, "utf8");
+  };
+
+  assert.equal(await runDetection(), "configured=false\n");
+  await mkdir(join(directory, ".sdlc", "base", ".github", "scripts"), { recursive: true });
+  await writeFile(
+    join(directory, ".sdlc", "base", ".github", "scripts", "sdlc-pr-contract.mjs"),
+    "// fixture\n",
+  );
+  assert.equal(await runDetection(), "configured=true\n");
 });

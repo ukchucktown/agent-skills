@@ -242,3 +242,43 @@ test("native Git creates the same logical branch under the configured root", asy
     "fixture\n",
   );
 });
+
+test("native Git runs fetch and worktree creation from the recovered primary checkout", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "agent-skills-git-cwd-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const primary = join(directory, "widgets");
+  const task = join(directory, "worktrees", "widgets", "integration-issue-1");
+  const calls = [];
+  const adapter = new GitWorktreeAdapter(task, (executable, args, options) => {
+    calls.push({ executable, args, options });
+    return "";
+  });
+
+  await adapter.execute("create", {
+    repositoryRoot: primary,
+    branch: "feat/issue-6-start-worktrees",
+    base: "origin/integration/issue-1-large-feature",
+    fetchBranch: "integration/issue-1-large-feature",
+    location: join(directory, "worktrees", "widgets"),
+    name: "issue-6-start-worktrees",
+    root: join(directory, "worktrees", "widgets", "issue-6-start-worktrees"),
+  });
+
+  assert.deepEqual(calls.map((call) => ({ args: call.args, cwd: call.options.cwd })), [
+    {
+      args: ["fetch", "origin", "integration/issue-1-large-feature"],
+      cwd: primary,
+    },
+    {
+      args: [
+        "worktree",
+        "add",
+        "-b",
+        "feat/issue-6-start-worktrees",
+        join(directory, "worktrees", "widgets", "issue-6-start-worktrees"),
+        "origin/integration/issue-1-large-feature",
+      ],
+      cwd: primary,
+    },
+  ]);
+});

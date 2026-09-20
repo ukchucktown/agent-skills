@@ -19,9 +19,30 @@ issue, and #156 follows #153, #154, and #155.
 
 ## Adoption preview
 
+Before any mutation, the reviewed adoption preview covered the full recovery:
+
+- preserve every issue number, native relationship, branch, pull request, and
+  existing merge
+- add the three workflow label definitions, apply `sdlc:feature` to #148, and
+  apply `sdlc:child` to #149 through #156
+- record the existing integration branch on #148 and the completed child branch
+  on #149, with no replacement branches
+- mark #150 ready from the existing dependency graph and leave #151 through
+  #156 blocked
+- add the repository configuration, instruction pointers, generic contract,
+  and generic close-child automation through a pull request to `main`
+- advance the existing integration branch with the same reviewed setup commit
+- exercise start and finish on #150 and retain the branch-specific close
+  workflow until the generic close-child run succeeds
+- remove the branch-specific workflow only after that live proof
+
+The preview explicitly excluded changes to issue numbers, issue content, native
+relationships, existing branch history, and implementation files. The user
+approved this recovery before it began.
+
 Setup plan
 `e376bc77d68b4c89f0506572d42a3d17794bb03c6e2fead14a61a2625fdd2274`
-listed every change before setup changed the repository. It proposed:
+was the deterministic repository-setup portion of that preview. It proposed:
 
 - one marked block in `AGENTS.md`
 - one Copilot instruction file
