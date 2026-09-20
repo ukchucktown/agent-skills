@@ -5,15 +5,22 @@
   "description": "Personal cross-harness Agent Skills and deterministic workflow helpers",
   "type": "module",
   "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
     "changeset": "changeset",
     "check:first-read-prompt": "node scripts/check-first-read-prompt.mjs",
+    "instructions:sync": "node scripts/sync-instructions.mjs",
+    "matt:check": "node scripts/validate-matt-dependency.mjs",
+    "matt:update": "node scripts/update-matt.mjs --repository .",
+    "release:check": "node scripts/check-release.mjs",
     "release:version": "changeset version",
-    "test": "npm run validate:skills && npm run test:first-read && npm run test:sdlc && npm run check:first-read-prompt",
+    "test": "npm run validate:skills && npm run matt:check && npm run release:check && npm run test:first-read && npm run test:sdlc && npm run test:bootstrap && npm run check:first-read-prompt",
+    "test:bootstrap": "node --test tests/bootstrap/bootstrap.test.mjs tests/bootstrap/matt-update.test.mjs",
     "test:first-read": "node scripts/test-first-read.mjs",
     "test:sdlc": "node --test tests/sdlc-workflow/core.test.mjs tests/sdlc-setup/setup.test.mjs tests/sdlc-setup/contracts.test.mjs tests/sdlc-plan-work/publisher.test.mjs tests/sdlc-status/status.test.mjs tests/sdlc-start-issue/starter.test.mjs tests/sdlc-finish-issue/finisher.test.mjs tests/sdlc-feature-lifecycle/feature-core.test.mjs",
     "validate:skills": "node scripts/validate-skills.mjs"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "0.7.0",
     "@changesets/cli": "2.29.7"
   },
   "engines": {

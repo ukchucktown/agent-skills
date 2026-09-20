@@ -1,6 +1,9 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
-  "changelog": false,
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "ukchucktown/agent-skills" }
+  ],
   "commit": false,
   "fixed": [],
   "linked": [],
@@ -10,6 +13,6 @@
   "ignore": [],
   "privatePackages": {
     "version": true,
-    "tag": false
+    "tag": true
   }
 }

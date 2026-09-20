@@ -27,7 +27,7 @@ and retired skills live in the `in-progress` and `deprecated` lifecycle
 buckets. Repository checks enforce the bucket, name, metadata, and local-link
 rules.
 
-## Install one skill
+## Install and manage skills
 
 The [Skills CLI](https://github.com/vercel-labs/skills) can discover each skill
 below `skills/`:
@@ -36,9 +36,13 @@ below `skills/`:
 npx skills add ukchucktown/agent-skills --skill first-read --global --yes
 ```
 
-Use `--agent` to limit the target harness. Use `--copy` for a detached copy or
-omit it for a link that follows this checkout. See the
-[`first-read` guide](docs/first-read/README.md) for its extra integrations.
+Use `--agent` to limit the target harness. Each `sdlc-*` entry point also needs
+the internal `sdlc-workflow` skill. The personal bootstrap installs this shared
+runtime automatically. See the [bootstrap and management guide](docs/bootstrap.md)
+for selective installation, removal, harness paths, and Lampwright behavior.
+
+See the [`first-read` guide](docs/first-read/README.md) for its extra
+integrations.
 
 ## Develop
 
