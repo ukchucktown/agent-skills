@@ -13,6 +13,7 @@ needed for its task.
 | Skill | Status | Purpose |
 |---|---|---|
 | [`first-read`](skills/writing/first-read/) | Promoted | Write and audit durable technical prose |
+| [`sdlc-finish-issue`](skills/engineering/sdlc-finish-issue/) | Promoted | Validate, review, and merge one child issue |
 | [`sdlc-plan-work`](skills/engineering/sdlc-plan-work/) | Promoted | Plan and publish one issue or a coordinated feature |
 | [`sdlc-setup`](skills/engineering/sdlc-setup/) | Promoted | Configure repositories and GitHub PR contracts |
 | [`sdlc-start-issue`](skills/engineering/sdlc-start-issue/) | Promoted | Claim an issue and prepare its isolated worktree |

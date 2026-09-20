@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ukchucktown/agent-skills/schemas/review-evidence.schema.json",
+  "title": "SDLC review evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "axis", "candidateCommit", "verdict", "summary"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "axis": { "enum": ["standards", "specification"] },
+    "candidateCommit": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+    "verdict": { "enum": ["pass", "fail"] },
+    "summary": { "type": "string", "minLength": 1 }
+  }
+}

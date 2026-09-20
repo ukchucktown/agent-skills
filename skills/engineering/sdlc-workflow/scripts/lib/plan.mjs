@@ -13,6 +13,7 @@ export const allowedOperations = Object.freeze({
     "ensure-label",
     "merge-pull-request",
     "open-pull-request",
+    "update-pull-request",
     "remove-label",
     "unassign-issue",
     "update-issue",
