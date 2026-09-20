@@ -1,0 +1,3 @@
+interface:
+  display_name: "SDLC Workflow"
+  short_description: "Shared lifecycle and safe workflow runtime"

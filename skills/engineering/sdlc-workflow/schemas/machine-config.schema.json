@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ukchucktown/agent-skills/schemas/machine-config.schema.json",
+  "title": "SDLC machine profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "checkoutRoot", "worktreeRoot", "worktreeManager"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "checkoutRoot": { "type": "string", "minLength": 1 },
+    "worktreeRoot": { "type": "string", "minLength": 1 },
+    "worktreeManager": { "enum": ["supacode", "git"] },
+    "executables": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "git": { "type": "string", "minLength": 1 },
+        "github": { "type": "string", "minLength": 1 },
+        "supacode": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

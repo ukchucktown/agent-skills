@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ukchucktown/agent-skills/schemas/repository-config.schema.json",
+  "title": "SDLC repository configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "provider",
+    "stableBranch",
+    "integrationBranchPattern",
+    "childBranchPattern",
+    "worktreeRetention",
+    "finalMergeApproval",
+    "featureLabel",
+    "childLabel",
+    "readyLabel"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "provider": { "const": "github" },
+    "stableBranch": { "type": "string", "minLength": 1 },
+    "integrationBranchPattern": {
+      "type": "string",
+      "pattern": "\\{issue\\}.*\\{slug\\}|\\{slug\\}.*\\{issue\\}"
+    },
+    "childBranchPattern": {
+      "type": "string",
+      "pattern": "\\{issue\\}.*\\{slug\\}|\\{slug\\}.*\\{issue\\}"
+    },
+    "worktreeRetention": { "const": "feature" },
+    "closeChildOnIntegrationMerge": { "type": "boolean" },
+    "autoMergeChildPullRequests": { "type": "boolean" },
+    "finalMergeApproval": { "const": "required" },
+    "featureLabel": { "type": "string", "minLength": 1 },
+    "childLabel": { "type": "string", "minLength": 1 },
+    "readyLabel": { "type": "string", "minLength": 1 }
+  }
+}

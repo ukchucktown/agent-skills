@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ukchucktown/agent-skills/schemas/workflow-state.schema.json",
+  "title": "Derived SDLC workflow state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "repository", "feature", "children", "nextAction", "freshness"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "repository": { "type": "object" },
+    "feature": {
+      "type": "object",
+      "required": ["number", "status", "integrationBranch"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["planned", "in_progress", "ready_to_finish", "complete", "cancelled"] },
+        "integrationBranch": { "type": "string" }
+      }
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["number", "status", "openBlockers"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "status": { "enum": ["blocked", "ready", "in_progress", "review", "complete", "cancelled"] },
+          "openBlockers": { "type": "array", "items": { "type": "integer" } }
+        }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "required": ["kind", "summary"],
+      "properties": {
+        "kind": { "type": "string" },
+        "issue": { "type": "integer" },
+        "summary": { "type": "string" }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "freshness": {
+      "type": "object",
+      "required": ["fingerprint"],
+      "properties": {
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
