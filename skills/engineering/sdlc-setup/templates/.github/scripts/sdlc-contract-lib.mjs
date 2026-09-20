@@ -1,3 +1,5 @@
+/* global fetch */
+
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 

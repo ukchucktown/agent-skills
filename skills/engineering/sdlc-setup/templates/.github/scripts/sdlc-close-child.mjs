@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console, process */
 
 import { readFile } from "node:fs/promises";
 

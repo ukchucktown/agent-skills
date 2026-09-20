@@ -100,11 +100,11 @@ export class GitWorktreeAdapter extends CommandWorktreeAdapter {
     if (operation !== "create") throw new Error(`unsupported Git worktree operation '${operation}'`);
     await mkdir(parameters.location, { recursive: true });
     if (parameters.fetchBranch) {
-      this.command("git", ["fetch", "origin", parameters.fetchBranch]);
+      this.command("git", ["fetch", "origin", parameters.fetchBranch], parameters.repositoryRoot);
     }
     this.command("git", [
       "worktree", "add", "-b", parameters.branch, parameters.root, parameters.base,
-    ]);
+    ], parameters.repositoryRoot);
     return {
       id: parameters.root,
       root: parameters.root,

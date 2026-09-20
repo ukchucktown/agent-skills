@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -178,4 +179,26 @@ test("the generated frontmatter is readable by trusted workflow code", () => {
   const parsed = parseRepositoryConfig(document.replaceAll("\n", "\r\n"));
   assert.equal(parsed.stableBranch, "main");
   assert.deepEqual(parsed.featureValidationCommands, config.featureValidationCommands);
+});
+
+test("workflow entry points declare the Node globals used by strict repository linters", async () => {
+  const root = new URL(
+    "../../skills/engineering/sdlc-setup/templates/.github/scripts/",
+    import.meta.url,
+  );
+  const closeChild = await readFile(new URL("sdlc-close-child.mjs", root), "utf8");
+  const contract = await readFile(new URL("sdlc-contract-lib.mjs", root), "utf8");
+  const pullRequest = await readFile(new URL("sdlc-pr-contract.mjs", root), "utf8");
+  assert.match(closeChild, /\/\* global console, process \*\//);
+  assert.match(contract, /\/\* global fetch \*\//);
+  assert.match(pullRequest, /\/\* global console, process \*\//);
+});
+
+test("the contract workflow permits its first setup pull request", async () => {
+  const workflow = await readFile(new URL(
+    "../../skills/engineering/sdlc-setup/templates/.github/workflows/sdlc-contract.yml",
+    import.meta.url,
+  ), "utf8");
+  assert.match(workflow, /Detect first-time setup/);
+  assert.match(workflow, /steps\.setup\.outputs\.configured == 'true'/);
 });

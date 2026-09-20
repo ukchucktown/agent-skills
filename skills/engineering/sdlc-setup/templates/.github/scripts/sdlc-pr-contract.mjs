@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console, process */
 
 import { appendFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";

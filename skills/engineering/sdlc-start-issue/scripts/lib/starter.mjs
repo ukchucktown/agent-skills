@@ -1,4 +1,4 @@
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { renderPattern } from "../../../sdlc-workflow/scripts/lib/config.mjs";
 import { fingerprint } from "../../../sdlc-workflow/scripts/lib/json.mjs";
@@ -70,7 +70,9 @@ export function createStartPlan({
     throw new Error(`branch '${branch}' has multiple local worktrees`);
   }
 
-  const repositoryName = basename(resolve(repositoryRoot));
+  const repositoryName = snapshot.repository.split("/").at(-1);
+  if (!repositoryName) throw new Error("start plan needs a repository name");
+  const primaryRepositoryRoot = join(machineConfig.checkoutRoot, repositoryName);
   const worktreeName = `issue-${issue.number}-${issue.title
     .normalize("NFKD")
     .toLowerCase()
@@ -86,7 +88,7 @@ export function createStartPlan({
       adapter: "worktree",
       operation: "create",
       parameters: {
-        repositoryRoot: resolve(repositoryRoot),
+        repositoryRoot: primaryRepositoryRoot,
         branch,
         base: `origin/${snapshot.integrationBranch}`,
         fetchBranch: snapshot.integrationBranch,

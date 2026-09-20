@@ -60,3 +60,5 @@ npm test
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before a change. Read the
 [private release process](docs/releases.md) before a version update.
+The [Lampwright Session setup pilot](docs/pilots/lampwright-148.md) records the
+first live adoption and its portability findings.

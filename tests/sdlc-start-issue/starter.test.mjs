@@ -82,6 +82,23 @@ test("start planning claims a ready issue without recording a local path", () =>
   assert.equal(plan.worktree.manager, "supacode");
 });
 
+test("start planning resolves the primary checkout from a task worktree", () => {
+  const plan = createStartPlan({
+    snapshot: snapshot(),
+    repositoryConfig,
+    machineConfig,
+    repositoryRoot: "/projects/worktrees/widgets/integration-issue-1",
+  });
+  const create = plan.actions.find((action) => action.id === "create-worktree");
+  assert.equal(create.parameters.repositoryRoot, "/projects/widgets");
+  assert.equal(create.parameters.location, "/projects/worktrees/widgets");
+  assert.equal(
+    create.parameters.root,
+    "/projects/worktrees/widgets/issue-6-start-worktrees",
+  );
+  assert.equal(plan.repositoryRoot, "/projects/worktrees/widgets/integration-issue-1");
+});
+
 test("start refuses open blockers, pull requests, and unreviewed assignment conflicts", () => {
   assert.throws(() => createStartPlan({
     snapshot: snapshot({ blockers: [{ number: 4, state: "open" }] }),
