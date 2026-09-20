@@ -14,6 +14,7 @@ export const allowedOperations = Object.freeze({
     "merge-pull-request",
     "open-pull-request",
     "remove-label",
+    "unassign-issue",
     "update-issue",
   ]),
   git: new Set(["create-branch", "delete-branch", "fetch", "push-branch"]),

@@ -215,3 +215,13 @@ export function renderPattern(pattern, issue, title) {
     .slice(0, 48) || "work";
   return pattern.replaceAll("{issue}", String(issue)).replaceAll("{slug}", slug);
 }
+
+export function recordedBranch(comments, kind = "child") {
+  const name = kind === "integration" ? "integration-branch" : "branch";
+  const expression = new RegExp(`<!--\\s*agent-skills:sdlc-${name}:([^\\s>]+)\\s*-->`);
+  for (const comment of comments ?? []) {
+    const match = String(comment.body ?? comment).match(expression);
+    if (match) return match[1];
+  }
+  return null;
+}

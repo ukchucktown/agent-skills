@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { recordedBranch } from "../../skills/engineering/sdlc-workflow/scripts/lib/config.mjs";
 import { deriveWorkflowState } from "../../skills/engineering/sdlc-workflow/scripts/lib/state.mjs";
 import {
   GitWorktreeSnapshotAdapter,
@@ -79,6 +80,7 @@ function fakeGh(executable, args, options) {
       },
     ]);
   }
+  if (endpoint.includes("/comments?")) return "[]";
   if (endpoint.includes("dependencies/blocked_by")) return "[]";
   if (endpoint.includes("branches/feat%2Fissue-2-")) return "{}";
   if (endpoint.includes("branches/feat%2Fissue-3-")) {
@@ -111,6 +113,21 @@ test("live status adapters use read-only commands and derive the next command", 
   assert.deepEqual(view.groups.active.map((issue) => issue.number), [2]);
   assert.deepEqual(view.groups.ready.map((issue) => issue.number), [3]);
   assert.equal(view.nextCommand, "/sdlc-finish-issue 2");
+});
+
+test("recorded branch markers preserve adopted feature and child branches", () => {
+  assert.equal(
+    recordedBranch([
+      { body: "Existing feature.\n\n<!-- agent-skills:sdlc-integration-branch:feat/legacy-integration -->" },
+    ], "integration"),
+    "feat/legacy-integration",
+  );
+  assert.equal(
+    recordedBranch([
+      { body: "Started.\n\n<!-- agent-skills:sdlc-branch:feat/custom-child -->" },
+    ]),
+    "feat/custom-child",
+  );
 });
 
 test("Git worktree inspection parses branches without changing the repository", async () => {

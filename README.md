@@ -15,6 +15,7 @@ needed for its task.
 | [`first-read`](skills/writing/first-read/) | Promoted | Write and audit durable technical prose |
 | [`sdlc-plan-work`](skills/engineering/sdlc-plan-work/) | Promoted | Plan and publish one issue or a coordinated feature |
 | [`sdlc-setup`](skills/engineering/sdlc-setup/) | Promoted | Configure repositories and GitHub PR contracts |
+| [`sdlc-start-issue`](skills/engineering/sdlc-start-issue/) | Promoted | Claim an issue and prepare its isolated worktree |
 | [`sdlc-status`](skills/engineering/sdlc-status/) | Promoted | Show live workflow status and the next command |
 | [`sdlc-workflow`](skills/engineering/sdlc-workflow/) | Internal | Share lifecycle rules and safe runtime contracts |
 
