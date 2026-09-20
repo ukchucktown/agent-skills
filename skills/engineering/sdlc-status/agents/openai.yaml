@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Status"
+  short_description: "Show workflow status and the exact next command"
+policy:
+  allow_implicit_invocation: false

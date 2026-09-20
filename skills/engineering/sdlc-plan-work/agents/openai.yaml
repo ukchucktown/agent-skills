@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Plan Work"
+  short_description: "Plan one issue or a coordinated GitHub feature"
+policy:
+  allow_implicit_invocation: false
