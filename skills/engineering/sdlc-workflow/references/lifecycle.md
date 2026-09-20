@@ -45,6 +45,9 @@ silently choosing a destructive action.
   integration branch.
 - The user approves the final merge.
 
+Feature cancellation also uses an exact plan approval. The plan lists every
+issue, pull request, worktree, and branch that the apply step can change.
+
 ## Worktree retention
 
 Keep child worktrees while the feature remains active. After the feature merge,

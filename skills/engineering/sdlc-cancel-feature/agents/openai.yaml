@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Cancel Feature"
+  short_description: "Review and apply a safe feature cancellation"
+policy:
+  allow_implicit_invocation: false
