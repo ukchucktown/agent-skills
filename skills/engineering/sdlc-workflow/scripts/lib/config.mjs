@@ -11,6 +11,10 @@ export const repositoryDefaults = Object.freeze({
   worktreeRetention: "feature",
   closeChildOnIntegrationMerge: true,
   autoMergeChildPullRequests: true,
+  childMergeMethod: "merge",
+  featureMergeMethod: "merge",
+  childValidationCommands: [],
+  featureValidationCommands: [],
   finalMergeApproval: "required",
   featureLabel: "sdlc:feature",
   childLabel: "sdlc:child",
@@ -29,6 +33,13 @@ function scalar(value) {
   if (trimmed === "false") return false;
   if (trimmed === "null") return null;
   if (/^-?\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      throw new Error(`invalid JSON value '${trimmed}'`);
+    }
+  }
   return trimmed;
 }
 
@@ -97,6 +108,32 @@ export function validateRepositoryConfig(value) {
     if (typeof config[key] !== "boolean") {
       throw new Error(`repository configuration '${key}' must be a boolean`);
     }
+  }
+  for (const key of ["childMergeMethod", "featureMergeMethod"]) {
+    if (!new Set(["merge", "squash", "rebase"]).has(config[key])) {
+      throw new Error(`repository configuration '${key}' must be merge, squash, or rebase`);
+    }
+  }
+  for (const key of ["childValidationCommands", "featureValidationCommands"]) {
+    if (!Array.isArray(config[key])) {
+      throw new Error(`repository configuration '${key}' must be an array`);
+    }
+    config[key] = config[key].map((command, index) => {
+      if (!command || typeof command !== "object" || Array.isArray(command)) {
+        throw new Error(`repository configuration '${key}' item ${index + 1} must be an object`);
+      }
+      const commandKeys = Object.keys(command).sort().join(",");
+      if (commandKeys !== "args,executable") {
+        throw new Error(`repository configuration '${key}' item ${index + 1} needs only executable and args`);
+      }
+      if (typeof command.executable !== "string" || !command.executable) {
+        throw new Error(`repository configuration '${key}' item ${index + 1} needs an executable`);
+      }
+      if (!Array.isArray(command.args) || command.args.some((argument) => typeof argument !== "string")) {
+        throw new Error(`repository configuration '${key}' item ${index + 1} args must be strings`);
+      }
+      return { executable: command.executable, args: [...command.args] };
+    });
   }
   return config;
 }

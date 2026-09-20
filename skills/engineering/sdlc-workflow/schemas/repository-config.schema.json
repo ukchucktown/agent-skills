@@ -11,6 +11,10 @@
     "integrationBranchPattern",
     "childBranchPattern",
     "worktreeRetention",
+    "childMergeMethod",
+    "featureMergeMethod",
+    "childValidationCommands",
+    "featureValidationCommands",
     "finalMergeApproval",
     "featureLabel",
     "childLabel",
@@ -31,9 +35,27 @@
     "worktreeRetention": { "const": "feature" },
     "closeChildOnIntegrationMerge": { "type": "boolean" },
     "autoMergeChildPullRequests": { "type": "boolean" },
+    "childMergeMethod": { "enum": ["merge", "squash", "rebase"] },
+    "featureMergeMethod": { "enum": ["merge", "squash", "rebase"] },
+    "childValidationCommands": { "$ref": "#/$defs/validationCommands" },
+    "featureValidationCommands": { "$ref": "#/$defs/validationCommands" },
     "finalMergeApproval": { "const": "required" },
     "featureLabel": { "type": "string", "minLength": 1 },
     "childLabel": { "type": "string", "minLength": 1 },
     "readyLabel": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "validationCommands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["executable", "args"],
+        "properties": {
+          "executable": { "type": "string", "minLength": 1 },
+          "args": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
   }
 }
