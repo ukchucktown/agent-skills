@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Setup"
+  short_description: "Configure a repository for coordinated feature work"
+policy:
+  allow_implicit_invocation: false
