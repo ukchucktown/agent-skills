@@ -37,6 +37,11 @@ expect "issue: hard"       tests/fixtures/issue.md      hard 0
 expect "spec: hard"        tests/fixtures/spec.md       hard 0
 expect "spec: soft"        tests/fixtures/spec.md       soft 0
 
+# "require" must not offer a token substitution. The transitive form gets a
+# rewrite hint, and only the predicative "required" swaps to the adjective.
+expect "swaps: hard"       tests/fixtures/swaps.md      hard 0
+expect "swaps: soft"       tests/fixtures/swaps.md      soft 3
+
 # Our own prose must pass the hard tier.
 for f in NOTICE.md README.md skills/first-read/SKILL.md \
          skills/first-read/references/*.md \

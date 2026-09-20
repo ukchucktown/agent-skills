@@ -59,12 +59,25 @@ it. Short version: run `scripts/lint.py`, read the text for what the linter
 cannot see, discard the false positives, report hard findings and soft advice
 separately, and ask before you rewrite.
 
+Your working directory is the project, not the skill directory, so invoke the
+linter by the path of the installed skill:
+
+```bash
+python3 ~/.claude/skills/first-read/scripts/lint.py path/to/file.md
+```
+
+A clone of this repository holds the same script under the repository root:
+
 ```bash
 python3 skills/first-read/scripts/lint.py path/to/file.md
 ```
 
-Add `--soft` for advisory checks. Add `--profile procedural` for a runbook or a
-procedure.
+Add `--soft` for the advisory checks. Add `--profile procedural` for a runbook
+or a procedure.
+
+The linter exits 1 when it finds a hard violation, and it exits 0 when it finds
+none. The soft findings never change the exit code, so a pre-commit hook or a
+continuous integration job can use the hard tier as a gate.
 
 ## The rules in one screen
 

@@ -240,7 +240,13 @@ SWAPS = {
     "obtain": "get", "obtains": "gets", "acquire": "get", "acquires": "gets",
     "perform": "do", "performs": "does", "performed": "did",
     "provide": "give", "provides": "gives", "provided": "gave",
-    "require": "is necessary", "requires": "is necessary",
+    # "require" takes no single-token replacement. The predicative form swaps to
+    # the adjective, and the transitive form needs a rewrite, because
+    # "the rules require a script" -> "the rules is necessary a script" is not
+    # grammatical.
+    "required": "necessary",
+    "require": 'rewrite: "Y is necessary for X"',
+    "requires": 'rewrite: "Y is necessary for X"',
     "modify": "change", "modifies": "changes",
     "alter": "change", "alters": "changes",
     "reduce": "decrease", "reduces": "decreases",

@@ -88,7 +88,9 @@ plainer word names it less exactly, the exact word wins.
 | interconnect, join, couple, fasten, link | connect |
 | maintain | keep, hold |
 | mount, equip, refit | install |
-| need, require | is necessary |
+| need | is necessary |
+| required | necessary |
+| require, requires | no single word replaces this verb, so rewrite the sentence: "Y is necessary for X" |
 | observe, track, watch | monitor |
 | omit, exclude | do not include |
 | proceed, progress, resume | continue |
