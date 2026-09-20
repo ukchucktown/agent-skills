@@ -69,7 +69,20 @@ repository identity and the machine profile.
 
 ## Completion evidence
 
-The pilot keeps the branch-specific close workflow until one remaining child
-passes the generic contract, merges into the integration branch, and closes
-through the generic workflow. The final pilot record will identify that child
-and the automation replacement pull request.
+Pull request #161 merged child issue #150 into the integration branch after all
+nine platform jobs and the generic contract passed. Generic close-child run
+`35528919321` then reported `Closed child issue #150` and completed
+successfully.
+
+The first contract attempt exposed a missing dependency-restoration step in a
+fresh checkout. Pull request #162 added configurable structured setup commands,
+and Lampwright now runs `npm ci --ignore-scripts` before either validation
+profile. The repaired generic contract passed on pull request #161.
+
+Commit `f6cd53b` removed the branch-specific close workflow from the integration
+branch after the generic run succeeded. The remaining Lampwright child issues
+now use only the reusable contract and close-child workflows.
+
+After completion, `sdlc-status` reported #149 and #150 complete, #151 ready,
+and #152 through #156 blocked by their recorded dependencies. Its next command
+was `/sdlc-start-issue 151`.
