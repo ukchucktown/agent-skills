@@ -220,5 +220,8 @@ test("native Git creates the same logical branch under the configured root", asy
     execFileSync("git", ["branch", "--show-current"], { cwd: worktreeRoot, encoding: "utf8" }).trim(),
     "feat/issue-6-start-worktrees",
   );
-  assert.equal(await readFile(join(worktreeRoot, "README.md"), "utf8"), "fixture\n");
+  assert.equal(
+    (await readFile(join(worktreeRoot, "README.md"), "utf8")).replaceAll("\r\n", "\n"),
+    "fixture\n",
+  );
 });
