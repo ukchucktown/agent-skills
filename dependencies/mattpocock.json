@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "repository": "mattpocock/skills",
+  "branch": "main",
+  "revision": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+  "skills": {
+    "code-review": "skills/engineering/code-review",
+    "grill-me": "skills/productivity/grill-me",
+    "grill-with-docs": "skills/engineering/grill-with-docs",
+    "to-spec": "skills/engineering/to-spec",
+    "to-tickets": "skills/engineering/to-tickets"
+  }
+}

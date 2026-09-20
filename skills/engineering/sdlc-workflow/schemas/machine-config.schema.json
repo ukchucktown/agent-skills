@@ -10,6 +10,18 @@
     "checkoutRoot": { "type": "string", "minLength": 1 },
     "worktreeRoot": { "type": "string", "minLength": 1 },
     "worktreeManager": { "enum": ["supacode", "git"] },
+    "skillSourceRoot": { "type": "string", "minLength": 1 },
+    "instructionSource": { "type": "string", "minLength": 1 },
+    "lampwrightStateRoot": { "type": "string", "minLength": 1 },
+    "harnesses": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "codex": { "$ref": "#/$defs/harness" },
+        "claude": { "$ref": "#/$defs/harness" },
+        "copilot": { "$ref": "#/$defs/harness" }
+      }
+    },
     "executables": {
       "type": "object",
       "additionalProperties": false,
@@ -17,6 +29,17 @@
         "git": { "type": "string", "minLength": 1 },
         "github": { "type": "string", "minLength": 1 },
         "supacode": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skillRoot", "instructionFile"],
+      "properties": {
+        "skillRoot": { "type": "string", "minLength": 1 },
+        "instructionFile": { "type": "string", "minLength": 1 }
       }
     }
   }

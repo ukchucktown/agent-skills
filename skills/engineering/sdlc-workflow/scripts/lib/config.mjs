@@ -147,7 +147,7 @@ export async function readRepositoryConfig(repositoryRoot, explicitPath) {
   };
 }
 
-export function machineDefaults(repositoryRoot) {
+export function machineDefaults(repositoryRoot, home = homedir()) {
   const checkoutRoot = dirname(resolve(repositoryRoot));
   return {
     schemaVersion: 1,
@@ -155,28 +155,85 @@ export function machineDefaults(repositoryRoot) {
     worktreeRoot: join(checkoutRoot, "worktrees"),
     worktreeManager: "git",
     executables: { git: "git", github: "gh", supacode: "supacode" },
+    skillSourceRoot: join(resolve(repositoryRoot), "skills"),
+    instructionSource: join(resolve(repositoryRoot), "instructions", "global.md"),
+    lampwrightStateRoot: join(home, ".local", "state", "lampwright"),
+    harnesses: {
+      codex: {
+        skillRoot: join(home, ".agents", "skills"),
+        instructionFile: join(home, ".codex", "AGENTS.md"),
+      },
+      claude: {
+        skillRoot: join(home, ".claude", "skills"),
+        instructionFile: join(home, ".claude", "CLAUDE.md"),
+      },
+      copilot: {
+        skillRoot: join(home, ".agents", "skills"),
+        instructionFile: join(home, ".copilot", "copilot-instructions.md"),
+      },
+    },
   };
 }
 
 export function validateMachineConfig(value, repositoryRoot) {
   const defaults = machineDefaults(repositoryRoot);
-  const allowed = new Set(["schemaVersion", "checkoutRoot", "worktreeRoot", "worktreeManager", "executables"]);
+  const allowed = new Set([
+    "schemaVersion",
+    "checkoutRoot",
+    "worktreeRoot",
+    "worktreeManager",
+    "executables",
+    "skillSourceRoot",
+    "instructionSource",
+    "lampwrightStateRoot",
+    "harnesses",
+  ]);
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) throw new Error(`machine configuration has unknown key '${key}'`);
+  }
+  if (value.harnesses && (typeof value.harnesses !== "object" || Array.isArray(value.harnesses))) {
+    throw new Error("machine configuration 'harnesses' must be an object");
   }
   const config = {
     ...defaults,
     ...value,
     executables: { ...defaults.executables, ...(value.executables ?? {}) },
+    harnesses: Object.fromEntries(Object.entries(defaults.harnesses).map(([name, settings]) => [
+      name,
+      { ...settings, ...(value.harnesses?.[name] ?? {}) },
+    ])),
   };
   if (config.schemaVersion !== 1) {
     throw new Error(`unsupported machine schemaVersion '${config.schemaVersion}'`);
   }
-  for (const key of ["checkoutRoot", "worktreeRoot"]) {
+  for (const key of [
+    "checkoutRoot",
+    "worktreeRoot",
+    "skillSourceRoot",
+    "instructionSource",
+    "lampwrightStateRoot",
+  ]) {
     if (typeof config[key] !== "string" || !config[key]) {
       throw new Error(`machine configuration '${key}' must be a non-empty string`);
     }
     config[key] = resolve(config[key]);
+  }
+  for (const name of Object.keys(value.harnesses ?? {})) {
+    if (!new Set(["codex", "claude", "copilot"]).has(name)) {
+      throw new Error(`machine configuration has unknown harness '${name}'`);
+    }
+  }
+  for (const [name, harness] of Object.entries(config.harnesses)) {
+    const keys = Object.keys(harness).sort().join(",");
+    if (keys !== "instructionFile,skillRoot") {
+      throw new Error(`machine harness '${name}' needs only instructionFile and skillRoot`);
+    }
+    for (const key of ["skillRoot", "instructionFile"]) {
+      if (typeof harness[key] !== "string" || !harness[key]) {
+        throw new Error(`machine harness '${name}' needs a non-empty ${key}`);
+      }
+      harness[key] = resolve(harness[key]);
+    }
   }
   if (!new Set(["supacode", "git"]).has(config.worktreeManager)) {
     throw new Error("worktreeManager must be 'supacode' or 'git'");

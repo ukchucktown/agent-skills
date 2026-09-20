@@ -1,6 +1,7 @@
 ---
 name: sdlc-workflow
 description: Shared lifecycle rules and deterministic runtime for coordinated GitHub feature work. Use when an sdlc-* skill needs repository configuration, workflow state, next-action derivation, plan freshness checks, or safe GitHub, Git, and worktree action boundaries. This is an internal skill; prefer the explicit sdlc-* entry-point skills for user requests.
+disable-model-invocation: true
 ---
 
 # SDLC workflow
