@@ -34,3 +34,12 @@ cross-harness instruction fragments, and deterministic workflow helpers.
 - Commit and push reviewed changes on feature branches. Do not push feature
   work directly to `main`.
 - Keep the repository private unless the user explicitly changes that choice.
+
+<!-- agent-skills:sdlc:start -->
+## Coordinated feature workflow
+
+Use the installed `sdlc-*` skills for coordinated GitHub features. Read
+`docs/agents/sdlc.md` for this repository's branch, label, validation, and
+merge settings. Keep ordinary issue and pull request work on the repository's
+existing workflow.
+<!-- agent-skills:sdlc:end -->
