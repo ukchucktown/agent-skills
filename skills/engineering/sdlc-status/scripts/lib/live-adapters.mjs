@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 
-import { renderPattern } from "../../../sdlc-workflow/scripts/lib/config.mjs";
+import {
+  recordedBranch,
+  renderPattern,
+} from "../../../sdlc-workflow/scripts/lib/config.mjs";
 
 function names(values = [], field) {
   return values.map((value) => typeof value === "string" ? value : value[field]);
@@ -77,6 +80,14 @@ export class LiveGitHubAdapter {
     const repository = this.repositoryName();
     const feature = this.api(`repos/${repository}/issues/${featureNumber}`);
     const children = this.api(`repos/${repository}/issues/${featureNumber}/sub_issues?per_page=100`);
+    const featureComments = this.api(
+      `repos/${repository}/issues/${featureNumber}/comments?per_page=100`,
+    );
+    const integrationBranch = recordedBranch(featureComments, "integration") ?? renderPattern(
+      this.config.integrationBranchPattern,
+      feature.number,
+      feature.title,
+    );
     const issues = [{
       number: feature.number,
       role: "feature",
@@ -85,18 +96,19 @@ export class LiveGitHubAdapter {
       labels: names(feature.labels, "name"),
       assignees: names(feature.assignees, "login"),
       blockedBy: [],
-      branch: renderPattern(
-        this.config.integrationBranchPattern,
-        feature.number,
-        feature.title,
-      ),
+      branch: integrationBranch,
     }];
 
     for (const child of children) {
       const blockers = this.api(
         `repos/${repository}/issues/${child.number}/dependencies/blocked_by?per_page=100`,
       );
-      const branch = renderPattern(this.config.childBranchPattern, child.number, child.title);
+      const comments = this.api(`repos/${repository}/issues/${child.number}/comments?per_page=100`);
+      const branch = recordedBranch(comments) ?? renderPattern(
+        this.config.childBranchPattern,
+        child.number,
+        child.title,
+      );
       const hasBranch = this.branchExists(repository, branch);
       const pullRequests = JSON.parse(this.gh([
         "pr", "list", "--repo", repository, "--state", "all", "--head", branch,

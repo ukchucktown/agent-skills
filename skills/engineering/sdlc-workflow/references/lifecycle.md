@@ -3,6 +3,12 @@
 GitHub holds the shared state. The local checkout holds policy and machine
 preferences. A missing local worktree must not hide work done by a teammate.
 
+Record an adopted integration branch in a parent comment with
+`<!-- agent-skills:sdlc-integration-branch:<branch> -->`. Record a child branch
+with `<!-- agent-skills:sdlc-branch:<branch> -->`. These markers preserve
+existing branch names that predate the configured templates. Never put a local
+worktree path in either comment.
+
 ## Feature states
 
 | State | Meaning | Next transition |

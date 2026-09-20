@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Start Issue"
+  short_description: "Claim an issue and prepare its worktree"
+policy:
+  allow_implicit_invocation: false
