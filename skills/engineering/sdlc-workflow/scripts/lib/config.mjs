@@ -11,7 +11,7 @@ export const repositoryDefaults = Object.freeze({
   worktreeRetention: "feature",
   closeChildOnIntegrationMerge: true,
   autoMergeChildPullRequests: true,
-  childMergeMethod: "merge",
+  childMergeMethod: "squash",
   featureMergeMethod: "merge",
   childValidationCommands: [],
   featureValidationCommands: [],

@@ -38,7 +38,9 @@ silently choosing a destructive action.
 
 - A child pull request targets its feature integration branch.
 - A child pull request closes exactly one child issue.
-- All GitHub blockers and required checks must pass before a child merge.
+- All GitHub blockers, required reviews, and checks must pass before a child
+  merge.
+- Validation and both review axes must name the exact child candidate commit.
 - A stable-branch pull request for a coordinated feature comes from the
   integration branch.
 - The user approves the final merge.

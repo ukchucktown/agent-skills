@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Finish Issue"
+  short_description: "Review and merge one child issue safely"
+policy:
+  allow_implicit_invocation: false

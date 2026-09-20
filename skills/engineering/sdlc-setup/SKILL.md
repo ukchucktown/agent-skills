@@ -46,7 +46,8 @@ automation files. It creates or updates only the three configured labels.
 - Stable branch: `main`
 - Integration branches: `integration/issue-{issue}-{slug}`
 - Child branches: `feat/issue-{issue}-{slug}`
-- Child and final merge method: merge commit
+- Child merge method: squash
+- Final merge method: merge commit
 - Worktree retention: until the feature reaches the stable branch
 - Child auto-merge: enabled after required checks and review
 - Final merge: explicit user approval
