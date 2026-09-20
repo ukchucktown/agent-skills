@@ -32,6 +32,7 @@ function display(file) {
 }
 
 function parseFrontmatter(text, file) {
+  text = text.replaceAll("\r\n", "\n");
   if (!text.startsWith("---\n")) {
     errors.push(`${display(file)}: missing YAML frontmatter`);
     return new Map();
