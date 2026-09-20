@@ -77,7 +77,7 @@ function childStatus(issue, issuesByNumber, worktrees, integrationBranch, warnin
     return { status: "review", openBlockers };
   }
 
-  if (issue.branch || issueWorktrees.length > 0) {
+  if (issue.branch || issueWorktrees.length > 0 || issue.assignees.length > 0) {
     if (openBlockers.length > 0) {
       warnings.push(
         `Issue #${issue.number} has active work and open blockers: ${openBlockers.join(", ")}.`,
@@ -180,6 +180,7 @@ export function deriveWorkflowState({
         title: issue.title,
         status: derived.status,
         openBlockers: derived.openBlockers,
+        assignees: issue.assignees,
         branch: issue.branch ?? renderPattern(
           repositoryConfig.childBranchPattern,
           issue.number,

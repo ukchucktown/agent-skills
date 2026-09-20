@@ -13,7 +13,9 @@ needed for its task.
 | Skill | Status | Purpose |
 |---|---|---|
 | [`first-read`](skills/writing/first-read/) | Promoted | Write and audit durable technical prose |
+| [`sdlc-plan-work`](skills/engineering/sdlc-plan-work/) | Promoted | Plan and publish one issue or a coordinated feature |
 | [`sdlc-setup`](skills/engineering/sdlc-setup/) | Promoted | Configure repositories and GitHub PR contracts |
+| [`sdlc-status`](skills/engineering/sdlc-status/) | Promoted | Show live workflow status and the next command |
 | [`sdlc-workflow`](skills/engineering/sdlc-workflow/) | Internal | Share lifecycle rules and safe runtime contracts |
 
 Promoted engineering and writing skills live in subject buckets. Unfinished
