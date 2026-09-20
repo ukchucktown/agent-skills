@@ -6,6 +6,7 @@ export const allowedOperations = Object.freeze({
     "add-label",
     "assign-issue",
     "close-issue",
+    "close-pull-request",
     "comment",
     "create-issue",
     "create-sub-issue",

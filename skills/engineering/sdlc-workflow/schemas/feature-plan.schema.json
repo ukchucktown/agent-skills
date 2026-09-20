@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ukchucktown/agent-skills/schemas/feature-plan.schema.json",
+  "title": "SDLC feature merge or cancellation plan",
+  "type": "object",
+  "required": ["schemaVersion", "operation", "feature", "freshness", "cleanup", "planId"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "operation": { "enum": ["merge-feature", "cancel-feature"] },
+    "feature": { "type": "integer", "minimum": 1 },
+    "freshness": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "planId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "pullRequest": { "type": "integer", "minimum": 1 },
+    "candidateCommit": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+    "mergeMethod": { "enum": ["merge", "squash", "rebase"] },
+    "evidence": { "type": "object" },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "number"],
+        "properties": {
+          "type": { "enum": ["close-pull-request", "close-issue"] },
+          "number": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["removable", "retained"],
+      "properties": {
+        "removable": { "type": "array", "items": { "$ref": "#/$defs/worktree" } },
+        "retained": { "type": "array", "items": { "$ref": "#/$defs/worktree" } }
+      }
+    }
+  },
+  "$defs": {
+    "worktree": {
+      "type": "object",
+      "required": ["path", "branch", "clean", "mergedToStable", "reason"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "branch": { "type": ["string", "null"] },
+        "clean": { "type": "boolean" },
+        "mergedToStable": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "operation": { "const": "merge-feature" } } },
+      "then": { "required": ["pullRequest", "candidateCommit", "mergeMethod", "evidence"] },
+      "else": { "required": ["actions"] }
+    }
+  ]
+}

@@ -10,7 +10,7 @@
     "release:version": "changeset version",
     "test": "npm run validate:skills && npm run test:first-read && npm run test:sdlc && npm run check:first-read-prompt",
     "test:first-read": "node scripts/test-first-read.mjs",
-    "test:sdlc": "node --test tests/sdlc-workflow/core.test.mjs tests/sdlc-setup/setup.test.mjs tests/sdlc-setup/contracts.test.mjs tests/sdlc-plan-work/publisher.test.mjs tests/sdlc-status/status.test.mjs tests/sdlc-start-issue/starter.test.mjs tests/sdlc-finish-issue/finisher.test.mjs",
+    "test:sdlc": "node --test tests/sdlc-workflow/core.test.mjs tests/sdlc-setup/setup.test.mjs tests/sdlc-setup/contracts.test.mjs tests/sdlc-plan-work/publisher.test.mjs tests/sdlc-status/status.test.mjs tests/sdlc-start-issue/starter.test.mjs tests/sdlc-finish-issue/finisher.test.mjs tests/sdlc-feature-lifecycle/feature-core.test.mjs",
     "validate:skills": "node scripts/validate-skills.mjs"
   },
   "devDependencies": {

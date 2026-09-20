@@ -1,0 +1,5 @@
+interface:
+  display_name: "SDLC Finish Feature"
+  short_description: "Prepare and approve the final feature merge"
+policy:
+  allow_implicit_invocation: false
