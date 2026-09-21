@@ -281,6 +281,11 @@ only a compact count summary before the command applies the plan. The command
 does not repeat every branch and worktree. A stale confirmation still prints
 the complete refreshed plan for review.
 
+Forced repository cleanup tolerates a selected Git worktree that acquires a
+lock after the command creates the plan. If any apply-time operation still
+fails, the command reports the completed deletion counts and requires fresh
+discovery before a retry.
+
 The skill uses bounded GitHub queries and focused local inspection. It does not
 search every pull request, branch, worktree, or issue to increase confidence.
 When required evidence conflicts, it reports the conflict and waits for the

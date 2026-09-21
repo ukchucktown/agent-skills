@@ -476,6 +476,22 @@ confirmation_summary=$({
 })
 printf '%s\n' "$confirmation_summary"
 
+completed_worktree_count=0
+completed_local_count=0
+completed_remote_count=0
+
+report_partial_cleanup() {
+  operation_description=$1
+  operation_output=${2:-}
+  printf 'clean.sh: failed to %s\n' "$operation_description" >&2
+  [ -z "$operation_output" ] || printf '%s\n' "$operation_output" >&2
+  printf 'Repository cleanup may be partially applied.\n' >&2
+  printf 'Completed before failure: %s worktree removal(s), %s local branch deletion(s), %s remote branch deletion(s).\n' \
+    "$completed_worktree_count" "$completed_local_count" "$completed_remote_count" >&2
+  printf 'Rerun cleanup discovery before retrying.\n' >&2
+  exit 2
+}
+
 while IFS="$(printf '\t')" read -r branch planned_oid; do
   [ -n "$branch" ] || continue
   encoded_branch=$(jq -nr --arg value "$branch" '$value | @uri')
@@ -496,22 +512,36 @@ while IFS="$(printf '\t')" read -r worktree_path branch manager; do
   [ -n "$worktree_path" ] || continue
   if [ "$manager" = "supacode" ]; then
     worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
-    supacode worktree delete --worktree "$worktree_id" --background --timeout 30
+    if ! removal_output=$(supacode worktree delete \
+      --worktree "$worktree_id" --background --timeout 30 2>&1); then
+      report_partial_cleanup "remove worktree $worktree_path through Supacode" "$removal_output"
+    fi
+  elif [ "$force" = "true" ]; then
+    if ! removal_output=$(git worktree remove --force --force "$worktree_path" 2>&1); then
+      report_partial_cleanup "remove worktree $worktree_path" "$removal_output"
+    fi
   else
-    git worktree remove --force "$worktree_path"
+    if ! removal_output=$(git worktree remove --force "$worktree_path" 2>&1); then
+      report_partial_cleanup "remove worktree $worktree_path" "$removal_output"
+    fi
   fi
+  completed_worktree_count=$((completed_worktree_count + 1))
 done <"$remove_worktrees"
 
-git worktree prune
+if ! prune_output=$(git worktree prune 2>&1); then
+  report_partial_cleanup 'prune worktree metadata' "$prune_output"
+fi
 
 while IFS="$(printf '\t')" read -r branch planned_oid; do
   [ -n "$branch" ] || continue
   if current_ref=$(git rev-parse "refs/heads/$branch" 2>/dev/null); then
     [ "$current_ref" = "$planned_oid" ] || {
-      echo "clean.sh: local branch $branch changed during cleanup" >&2
-      exit 2
+      report_partial_cleanup "delete local branch $branch because it changed during cleanup"
     }
-    git branch -D -- "$branch" >/dev/null
+    if ! branch_output=$(git branch -D -- "$branch" 2>&1); then
+      report_partial_cleanup "delete local branch $branch" "$branch_output"
+    fi
+    completed_local_count=$((completed_local_count + 1))
   fi
 done <"$remove_local"
 
@@ -520,13 +550,12 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
   current_ref=$(git ls-remote --heads origin "refs/heads/$branch" | awk '{ print $1 }')
   if [ -n "$current_ref" ]; then
     [ "$current_ref" = "$planned_oid" ] || {
-      echo "clean.sh: remote branch $branch changed during cleanup" >&2
-      exit 2
+      report_partial_cleanup "delete remote branch $branch because it changed during cleanup"
     }
     if ! push_error=$(git push origin --delete "$branch" 2>&1); then
-      printf 'clean.sh: failed to delete remote branch %s\n%s\n' "$branch" "$push_error" >&2
-      exit 2
+      report_partial_cleanup "delete remote branch $branch" "$push_error"
     fi
+    completed_remote_count=$((completed_remote_count + 1))
   fi
 done <"$remove_remote"
 

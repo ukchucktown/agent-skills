@@ -90,6 +90,14 @@ if [ "${1:-}" = "remote" ] && [ "${2:-}" = "get-url" ] && [ "${3:-}" = "origin" 
   printf 'https://github.com/example/agent-skills.git\n'
   exit 0
 fi
+if [ "${1:-}" = "worktree" ] && [ "${2:-}" = "remove" ]; then
+  last=
+  for argument in "$@"; do last=$argument; done
+  if [ -n "${FAIL_WORKTREE_REMOVE_PATH:-}" ] && [ "$last" = "$FAIL_WORKTREE_REMOVE_PATH" ]; then
+    printf 'injected worktree removal failure\n' >&2
+    exit 71
+  fi
+fi
 exec "$REAL_GIT" "$@"
 EOF
 chmod +x "$fake_bin/git"
@@ -122,6 +130,10 @@ case "${1:-}:${2:-}" in
       *)
         encoded=${endpoint##*/}
         branch=$(printf '%s' "$encoded" | sed 's/%2F/\//g; s/%2f/\//g')
+        if [ "${LOCK_DURING_REVALIDATION_BRANCH:-}" = "$branch" ]; then
+          "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree lock \
+            "$LOCK_DURING_REVALIDATION_PATH" --reason supacode
+        fi
         oid=$("$REAL_GIT" --git-dir="$CLEAN_REMOTE" rev-parse "refs/heads/$branch")
         protected=false
         [ "$branch" != "feat/protected" ] || protected=true
@@ -183,6 +195,9 @@ run_clean() {
   GH_CALL_LOG="$call_log" \
   SUPACODE_ACTIVE_ID="$active_supacode_id" \
   SUPACODE_ACTIVE_PATH="$active_worktree" \
+  LOCK_DURING_REVALIDATION_BRANCH="${lock_during_revalidation_branch:-}" \
+  LOCK_DURING_REVALIDATION_PATH="${lock_during_revalidation_path:-}" \
+  FAIL_WORKTREE_REMOVE_PATH="${fail_worktree_remove_path:-}" \
   "$clean_command" "$@"
 }
 
@@ -272,6 +287,31 @@ for branch in feat/orphan-both feat/orphan-remote; do
   fi
 done
 
+racy_lock_worktree=$temporary_directory/racy-lock
+create_worktree feat/racy-lock "$racy_lock_worktree" racy-lock.txt
+"$real_git" -C "$primary" push -q origin feat/racy-lock
+racy_lock_worktree=$("$real_git" -C "$racy_lock_worktree" rev-parse --show-toplevel)
+
+racy_plan=$(cd "$primary" && run_clean \
+  --force --select feat/racy-lock example/agent-skills)
+racy_token=$(printf '%s\n' "$racy_plan" | awk '/^Confirmation token:/ { print $3 }')
+lock_during_revalidation_branch=feat/racy-lock
+lock_during_revalidation_path=$racy_lock_worktree
+racy_apply_output=$(cd "$primary" && run_clean \
+  --force --select feat/racy-lock --confirm "$racy_token" example/agent-skills)
+unset lock_during_revalidation_branch lock_during_revalidation_path
+printf '%s\n' "$racy_apply_output" | grep -F \
+  'Repository cleanup applied: 1 worktree(s), 1 local branch(es), 1 remote branch(es).' >/dev/null
+[ ! -d "$racy_lock_worktree" ]
+if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/racy-lock; then
+  echo 'forced repository cleanup left the newly locked local branch' >&2
+  exit 1
+fi
+if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/racy-lock; then
+  echo 'forced repository cleanup left the newly locked remote branch' >&2
+  exit 1
+fi
+
 force_output=$(cd "$primary" && run_clean --force example/agent-skills)
 printf '%s\n' "$force_output" | grep -F 'Selectable groups: 2' >/dev/null
 printf '%s\n' "$force_output" | grep -F 'Blocked groups: 3' >/dev/null
@@ -325,6 +365,31 @@ for branch in feat/leftover feat/active; do
     exit 1
   fi
 done
+
+partial_a_worktree=$temporary_directory/partial-a
+partial_b_worktree=$temporary_directory/partial-b
+create_worktree feat/partial-a "$partial_a_worktree" partial-a.txt
+create_worktree feat/partial-b "$partial_b_worktree" partial-b.txt
+partial_a_worktree=$("$real_git" -C "$partial_a_worktree" rev-parse --show-toplevel)
+partial_b_worktree=$("$real_git" -C "$partial_b_worktree" rev-parse --show-toplevel)
+
+partial_plan=$(cd "$primary" && run_clean --force \
+  --select feat/partial-a --select feat/partial-b example/agent-skills)
+partial_token=$(printf '%s\n' "$partial_plan" | awk '/^Confirmation token:/ { print $3 }')
+fail_worktree_remove_path=$partial_b_worktree
+if partial_output=$(cd "$primary" && run_clean --force \
+  --select feat/partial-a --select feat/partial-b --confirm "$partial_token" \
+  example/agent-skills 2>&1); then
+  echo 'repository cleanup ignored an injected worktree removal failure' >&2
+  exit 1
+fi
+unset fail_worktree_remove_path
+printf '%s\n' "$partial_output" | grep -F \
+  'Repository cleanup may be partially applied.' >/dev/null
+printf '%s\n' "$partial_output" | grep -F \
+  'Completed before failure: 1 worktree removal(s), 0 local branch deletion(s), 0 remote branch deletion(s).' >/dev/null
+[ ! -d "$partial_a_worktree" ]
+[ -d "$partial_b_worktree" ]
 
 for worktree in "$protected_worktree" "$open_pr_worktree" "$locked_worktree"; do
   [ -d "$worktree" ]
