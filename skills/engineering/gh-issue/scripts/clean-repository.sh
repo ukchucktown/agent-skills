@@ -2,11 +2,12 @@
 set -eu
 
 usage() {
-  echo "usage: clean.sh [--local-only] [--all | --select BRANCH...] [--confirm TOKEN] OWNER/REPOSITORY|." >&2
+  echo "usage: clean.sh [--local-only] [--force] [--all | --select BRANCH...] [--confirm TOKEN] OWNER/REPOSITORY|." >&2
   exit 64
 }
 
 local_only=false
+force=false
 select_all=false
 confirmation=
 selected_branches=
@@ -14,6 +15,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --local-only)
       local_only=true
+      shift
+      ;;
+    --force)
+      force=true
       shift
       ;;
     --all)
@@ -202,6 +207,7 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
   [ "$worktree_path" != "$primary_checkout" ] || continue
 
   reason=
+  risk=
   warning=
   manager=git
   local_oid=
@@ -238,19 +244,26 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
 
     if [ -z "$reason" ]; then
       if worktree_status=$(git -C "$worktree_path" status --porcelain=v1 2>/dev/null); then
-        [ -z "$worktree_status" ] || warning="worktree has uncommitted changes"
+        [ -z "$worktree_status" ] || risk="worktree has uncommitted changes"
       else
         reason="worktree is unavailable"
       fi
     fi
     if [ -z "$reason" ] && awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_focused"; then
-      warning="${warning}${warning:+; }worktree is active in Supacode"
+      risk="${risk}${risk:+; }worktree is active in Supacode"
     fi
     if [ -z "$reason" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
-      warning="${warning}${warning:+; }local and remote tips differ"
+      risk="${risk}${risk:+; }local and remote tips differ"
     fi
     if [ -z "$reason" ] && ! git merge-base --is-ancestor "$local_oid" "$stable_oid" 2>/dev/null; then
-      warning="${warning}${warning:+; }branch tip is not in $stable_branch"
+      risk="${risk}${risk:+; }branch tip is not in $stable_branch"
+    fi
+    if [ -z "$reason" ] && [ -n "$risk" ]; then
+      if [ "$force" = "true" ]; then
+        warning=$risk
+      else
+        reason=$risk
+      fi
     fi
   fi
 
@@ -275,6 +288,7 @@ while IFS= read -r branch; do
   fi
 
   reason=
+  risk=
   warning=
   local_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$local_branches")
   remote_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$remote_branches")
@@ -288,11 +302,18 @@ while IFS= read -r branch; do
   fi
 
   if [ -z "$reason" ] && [ -n "$local_oid" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
-    warning="local and remote tips differ"
+    risk="local and remote tips differ"
   fi
   tip_oid=${local_oid:-$remote_oid}
   if [ -z "$reason" ] && ! git merge-base --is-ancestor "$tip_oid" "$stable_oid" 2>/dev/null; then
-    warning="${warning}${warning:+; }branch tip is not in $stable_branch"
+    risk="${risk}${risk:+; }branch tip is not in $stable_branch"
+  fi
+  if [ -z "$reason" ] && [ -n "$risk" ]; then
+    if [ "$force" = "true" ]; then
+      warning=$risk
+    else
+      reason=$risk
+    fi
   fi
 
   if [ -n "$reason" ]; then
@@ -386,6 +407,7 @@ printf 'Repository cleanup plan\n'
 printf 'Repository: %s\n' "$canonical_repository"
 printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
 printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
+printf 'Risk policy: %s\n' "$([ "$force" = "true" ] && printf 'force' || printf 'safe only')"
 printf 'Selected groups: %s\n' "$selected_count"
 awk '{ printf "- %s\n", $0 }' "$selected"
 printf 'Worktrees to remove: %s\n' "$worktree_count"
@@ -401,8 +423,8 @@ awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$preserved"
 printf 'Unselected selectable groups: %s\n' "$unselected_count"
 
 plan_token=$({
-  printf 'operation\trepository-clean\nrepository\t%s\nstable\t%s\t%s\nlocal-only\t%s\n' \
-    "$canonical_repository" "$stable_branch" "$stable_oid" "$local_only"
+  printf 'operation\trepository-clean\nrepository\t%s\nstable\t%s\t%s\nlocal-only\t%s\nforce\t%s\n' \
+    "$canonical_repository" "$stable_branch" "$stable_oid" "$local_only" "$force"
   sed 's/^/selected\t/' "$selected"
   sed 's/^/worktree\t/' "$remove_worktrees"
   sed 's/^/local\t/' "$remove_local"
