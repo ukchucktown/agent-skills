@@ -1,6 +1,6 @@
 ---
 name: gh-issue
-description: Manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, or clean completed work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
+description: Manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, clean completed work, or cancel abandoned work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
 ---
 
 # GitHub issue workflow
@@ -15,13 +15,15 @@ selected worktree manager directly when start requires GitHub or local setup.
 Keep each path bounded: do not recursively fetch every descendant, search the
 full pull-request inventory, or inspect unrelated branches and worktrees.
 
-The current implementation supports `status`, `start`, `finish`, and `clean`.
+The current implementation supports `status`, `start`, `finish`, `clean`, and
+`cancel`.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
-Map only clear start, resume, status, finish, prepare-PR, clean, or clean-up
-intent to this skill. A bare issue reference or a request to discuss, create,
-review, close, prioritize, or merge an issue is outside this workflow.
+Map only clear start, resume, status, finish, prepare-PR, clean, clean-up,
+cancel, or abandon intent to this skill. A bare issue reference or a request to
+discuss, create, review, close, prioritize, or merge an issue is outside this
+workflow.
 
 Treat `start issue NUMBER`, `finish issue NUMBER`, `issue start NUMBER`, `issue
 finish NUMBER`, `GitHub issue NUMBER start`, `GitHub issue NUMBER finish`, and
@@ -29,6 +31,44 @@ equivalent unambiguous imperatives as explicit authorization. An explicit
 `gh-issue` command is also authorization. If you must infer the issue or
 intended action, show the resolved issue and dry-run plan. Then request
 confirmation before mutation.
+
+</important>
+
+<important if="the user asks to cancel or abandon an issue effort">
+
+Treat only an explicit cancel or abandon request as authorization to plan
+cancellation. Run the cancel command from the repository's primary checkout on
+its stable branch:
+
+```text
+<skill-directory>/scripts/cancel.sh OWNER/REPOSITORY NUMBER
+```
+
+Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
+Pass `--local-only` before the repository only when the user explicitly wants
+to preserve remote branches. The command resolves the top-level effort and
+prints one combined plan. It lists open issues that will close as `Not planned`,
+open pull requests that will close without merging, issue worktrees and
+branches that will be removed, warnings, and preserved artifacts. Planning is
+read-only and creates no saved plan file.
+
+Cancellation is allowed to discard unmerged commits, divergent local and
+remote tips, uncommitted changes, and worktrees active in Supacode. It never
+removes the stable checkout, a protected branch, an unrelated branch, an
+unavailable worktree, or a branch used by more than one worktree. Relay the
+plan without reconstructing it.
+
+Request one confirmation immediately before applying the plan. After
+confirmation, pass the exact displayed token:
+
+```text
+<skill-directory>/scripts/cancel.sh --confirm TOKEN OWNER/REPOSITORY NUMBER
+```
+
+Keep `--local-only` on the confirmed command when it appeared on the plan. If
+the command rejects a stale token, relay the new plan and request confirmation
+again. Do not close, delete, or preserve individual artifacts with separate
+Git, GitHub, filesystem, or Supacode commands.
 
 </important>
 

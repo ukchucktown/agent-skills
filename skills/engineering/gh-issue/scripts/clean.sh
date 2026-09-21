@@ -1,15 +1,22 @@
 #!/bin/sh
 set -eu
 
+command_name=${GH_ISSUE_COMMAND:-clean.sh}
+
 usage() {
-  echo "usage: clean.sh [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: $command_name [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
+operation=clean
 local_only=false
 confirmation=
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --cancel)
+      operation=cancel
+      shift
+      ;;
     --local-only)
       local_only=true
       shift
@@ -36,7 +43,7 @@ esac
 
 for command in git gh jq; do
   command -v "$command" >/dev/null 2>&1 || {
-    echo "clean.sh: $command is required" >&2
+    echo "$command_name: $command is required" >&2
     exit 69
   }
 done
@@ -47,20 +54,20 @@ hash_plan() {
   elif command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{ print $1 }'
   else
-    echo "clean.sh: shasum or sha256sum is required" >&2
+    echo "$command_name: shasum or sha256sum is required" >&2
     return 69
   fi
 }
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if ! root_json=$("$script_directory/query.sh" clean-root "$repository" "$number" 2>&1); then
-  printf 'clean.sh: cannot resolve issue #%s\n%s\n' "$number" "$root_json" >&2
+  printf '%s: cannot resolve issue #%s\n%s\n' "$command_name" "$number" "$root_json" >&2
   exit 2
 fi
 
 issue_exists=$(printf '%s' "$root_json" | jq -r '.data.repository.issue != null')
 [ "$issue_exists" = "true" ] || {
-  echo "clean.sh: issue #$number was not found" >&2
+  echo "$command_name: issue #$number was not found" >&2
   exit 2
 }
 
@@ -73,14 +80,14 @@ root_issue=$(printf '%s' "$root_json" | jq -ce '
     error("GitHub truncated the parent hierarchy")
   else $hierarchy[-1] end
 ') || {
-  echo "clean.sh: GitHub returned an incomplete parent hierarchy" >&2
+  echo "$command_name: GitHub returned an incomplete parent hierarchy" >&2
   exit 2
 }
 root_number=$(printf '%s' "$root_issue" | jq -r '.number')
 root_title=$(printf '%s' "$root_issue" | jq -r '.title')
 
 if ! tree_json=$("$script_directory/query.sh" clean-tree "$canonical_repository" "$root_number" 2>&1); then
-  printf 'clean.sh: cannot resolve the issue tree rooted at #%s\n%s\n' "$root_number" "$tree_json" >&2
+  printf '%s: cannot resolve the issue tree rooted at #%s\n%s\n' "$command_name" "$root_number" "$tree_json" >&2
   exit 2
 fi
 
@@ -105,20 +112,20 @@ if ! printf '%s' "$tree_json" | jq -ce '
     error("GitHub truncated a linked branch list")
   else $issues end
 ' >"$issues_file"; then
-  echo "clean.sh: GitHub returned incomplete cleanup data" >&2
+  echo "$command_name: GitHub returned incomplete cleanup data" >&2
   exit 2
 fi
 
 open_issues=$(jq -r '[.[] | select(.state == "OPEN") | "#\(.number) \(.title)"] | join(", ")' "$issues_file")
-[ -z "$open_issues" ] || {
-  echo "clean.sh: the top-level effort still has open issues: $open_issues" >&2
+if [ "$operation" = "clean" ] && [ -n "$open_issues" ]; then
+  echo "$command_name: the top-level effort still has open issues: $open_issues" >&2
   exit 2
-}
+fi
 
 stable_branch=$(printf '%s' "$tree_json" | jq -er '.data.repository.defaultBranchRef.name')
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
-  echo "clean.sh: run this command from the primary checkout of $canonical_repository" >&2
+  echo "$command_name: run this command from the primary checkout of $canonical_repository" >&2
   exit 2
 }
 
@@ -131,7 +138,7 @@ case "$current_remote" in
 esac
 current_repository=${current_repository%.git}
 [ "$current_repository" = "$canonical_repository" ] || {
-  echo "clean.sh: the current checkout is $current_repository, not $canonical_repository" >&2
+  echo "$command_name: the current checkout is $current_repository, not $canonical_repository" >&2
   exit 2
 }
 
@@ -141,29 +148,29 @@ primary_checkout=$(awk '/^worktree / { print substr($0, 10); exit }' "$worktrees
 current_checkout=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
 [ "$current_checkout" = "$primary_checkout" ] && [ "$current_branch" = "$stable_branch" ] || {
-  echo "clean.sh: run this command from the primary checkout on $stable_branch" >&2
+  echo "$command_name: run this command from the primary checkout on $stable_branch" >&2
   exit 2
 }
 [ -z "$(git status --porcelain=v1)" ] || {
-  echo "clean.sh: the primary checkout has uncommitted changes" >&2
+  echo "$command_name: the primary checkout has uncommitted changes" >&2
   exit 2
 }
 
 remote_branches=$temporary_directory/remote-branches
 if ! gh api --paginate "repos/$canonical_repository/branches?per_page=100" \
   --jq '.[] | [.name, .commit.sha, .protected] | @tsv' >"$remote_branches"; then
-  echo "clean.sh: cannot read remote branch protection and tip data" >&2
+  echo "$command_name: cannot read remote branch protection and tip data" >&2
   exit 2
 fi
 
 stable_oid=$(awk -F '\t' -v branch="$stable_branch" '$1 == branch { print $2; exit }' "$remote_branches")
 [ -n "$stable_oid" ] || {
-  echo "clean.sh: remote stable branch $stable_branch was not found" >&2
+  echo "$command_name: remote stable branch $stable_branch was not found" >&2
   exit 2
 }
 current_oid=$(git rev-parse HEAD)
 [ "$current_oid" = "$stable_oid" ] || {
-  echo "clean.sh: the primary checkout is not synchronized with origin/$stable_branch" >&2
+  echo "$command_name: the primary checkout is not synchronized with origin/$stable_branch" >&2
   exit 2
 }
 
@@ -212,7 +219,7 @@ done <"$all_branches"
 open_prs=$temporary_directory/open-prs
 printf '%s' "$tree_json" | jq -r '
   .data.repository.openPullRequests.nodes[] |
-  [.headRefName, .url] | @tsv
+  [.headRefName, (.number | tostring), .url] | @tsv
 ' >"$open_prs"
 
 root_linked_branches=$temporary_directory/root-linked-branches
@@ -233,12 +240,12 @@ done <"$candidate_branches"
 
 candidate_count=$(wc -l <"$candidate_branches" | tr -d ' ')
 root_candidate_count=$(wc -l <"$root_candidates" | tr -d ' ')
-if [ "$candidate_count" -gt 0 ] && [ "$root_candidate_count" -eq 0 ]; then
-  echo "clean.sh: cannot verify that top-level effort #$root_number reached $stable_branch" >&2
+if [ "$operation" = "clean" ] && [ "$candidate_count" -gt 0 ] && [ "$root_candidate_count" -eq 0 ]; then
+  echo "$command_name: cannot verify that top-level effort #$root_number reached $stable_branch" >&2
   exit 2
 fi
 
-if [ "$root_candidate_count" -gt 0 ]; then
+if [ "$operation" = "clean" ] && [ "$root_candidate_count" -gt 0 ]; then
   root_reached_stable=false
   while IFS= read -r branch; do
     [ -n "$branch" ] || continue
@@ -264,7 +271,7 @@ if [ "$root_candidate_count" -gt 0 ]; then
     fi
   done <"$root_candidates"
   [ "$root_reached_stable" = "true" ] || {
-    echo "clean.sh: top-level effort #$root_number has not reached $stable_branch" >&2
+    echo "$command_name: top-level effort #$root_number has not reached $stable_branch" >&2
     exit 2
   }
 fi
@@ -282,27 +289,53 @@ remove_worktrees=$temporary_directory/remove-worktrees
 remove_local=$temporary_directory/remove-local
 remove_remote=$temporary_directory/remove-remote
 preserved=$temporary_directory/preserved
+warnings=$temporary_directory/warnings
+close_issues=$temporary_directory/close-issues
+close_prs=$temporary_directory/close-prs
 : >"$remove_worktrees"
 : >"$remove_local"
 : >"$remove_remote"
 : >"$preserved"
+: >"$warnings"
+: >"$close_issues"
+: >"$close_prs"
+
+if [ "$operation" = "cancel" ]; then
+  jq -r 'reverse[] | select(.state == "OPEN") | [(.number | tostring), .title] | @tsv' \
+    "$issues_file" >"$close_issues"
+  while IFS= read -r branch; do
+    awk -F '\t' -v branch="$branch" '$1 == branch { print $2 "\t" $3 "\t" $1 }' \
+      "$open_prs" >>"$close_prs"
+  done <"$candidate_branches"
+  sort -u "$close_prs" -o "$close_prs"
+fi
 
 while IFS= read -r branch; do
   [ -n "$branch" ] || continue
   local_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$local_branches")
   remote_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$remote_branches")
   remote_protected=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$remote_branches")
-  open_pr=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$open_prs")
+  open_pr=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$open_prs")
   branch_worktrees=$(awk -F '\t' -v branch="$branch" '$2 == branch' "$worktree_rows")
   worktree_count=$(printf '%s\n' "$branch_worktrees" | awk 'NF { count++ } END { print count + 0 }')
 
   reason=
+  warning=
   if [ -n "$open_pr" ]; then
-    reason="open pull request: $open_pr"
-  elif [ "$remote_protected" = "true" ]; then
+    if [ "$operation" = "cancel" ]; then
+      warning="open pull request will close: $open_pr"
+    else
+      reason="open pull request: $open_pr"
+    fi
+  fi
+  if [ "$remote_protected" = "true" ]; then
     reason="remote branch is protected"
   elif [ -n "$local_oid" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
-    reason="local and remote tips differ"
+    if [ "$operation" = "cancel" ]; then
+      warning="${warning}${warning:+; }local and remote tips differ"
+    else
+      reason="local and remote tips differ"
+    fi
   elif [ "$worktree_count" -gt 1 ]; then
     reason="more than one worktree uses the branch"
   fi
@@ -317,10 +350,30 @@ while IFS= read -r branch; do
     if [ "$worktree_path" = "$current_checkout" ]; then
       reason="branch is active in the current checkout"
     elif awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_focused"; then
-      reason="worktree is active in Supacode: $worktree_path"
-    elif [ -n "$(git -C "$worktree_path" status --porcelain=v1 2>/dev/null || printf unavailable)" ]; then
-      reason="worktree is dirty or unavailable: $worktree_path"
-    elif [ "$worktree_locked" = "true" ]; then
+      if [ "$operation" = "cancel" ]; then
+        warning="${warning}${warning:+; }worktree is active in Supacode"
+      else
+        reason="worktree is active in Supacode: $worktree_path"
+      fi
+    fi
+    if [ -z "$reason" ]; then
+      if worktree_status=$(git -C "$worktree_path" status --porcelain=v1 2>/dev/null); then
+        if [ -n "$worktree_status" ]; then
+          if [ "$operation" = "cancel" ]; then
+            warning="${warning}${warning:+; }worktree has uncommitted changes"
+          else
+            reason="worktree is dirty or unavailable: $worktree_path"
+          fi
+        fi
+      else
+        if [ "$operation" = "cancel" ]; then
+          reason="worktree is unavailable: $worktree_path"
+        else
+          reason="worktree is dirty or unavailable: $worktree_path"
+        fi
+      fi
+    fi
+    if [ -z "$reason" ] && [ "$worktree_locked" = "true" ]; then
       if awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_worktrees"; then
         worktree_manager=supacode
       else
@@ -331,7 +384,7 @@ while IFS= read -r branch; do
 
   branch_oid=$local_oid
   [ -n "$branch_oid" ] || branch_oid=$remote_oid
-  if [ -z "$reason" ]; then
+  if [ -z "$reason" ] && [ "$operation" = "clean" ]; then
     reached_stable=false
     if git cat-file -e "${branch_oid}^{commit}" 2>/dev/null &&
        git merge-base --is-ancestor "$branch_oid" "$stable_oid" 2>/dev/null; then
@@ -353,6 +406,10 @@ while IFS= read -r branch; do
     continue
   fi
 
+  if [ -n "$warning" ]; then
+    printf '%s\t%s\n' "$branch" "$warning" >>"$warnings"
+  fi
+
   if [ -n "$worktree_path" ]; then
     printf '%s\t%s\t%s\n' "$worktree_path" "$branch" "$worktree_manager" >>"$remove_worktrees"
   fi
@@ -371,9 +428,19 @@ done <"$candidate_branches"
 worktree_count=$(wc -l <"$remove_worktrees" | tr -d ' ')
 local_count=$(wc -l <"$remove_local" | tr -d ' ')
 remote_count=$(wc -l <"$remove_remote" | tr -d ' ')
-action_count=$((worktree_count + local_count + remote_count))
+issue_count=$(wc -l <"$close_issues" | tr -d ' ')
+pr_count=$(wc -l <"$close_prs" | tr -d ' ')
+action_count=$((worktree_count + local_count + remote_count + issue_count + pr_count))
 
-printf 'Clean plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+if [ "$operation" = "cancel" ]; then
+  printf 'Cancel plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+  printf 'Issues to close as Not planned: %s\n' "$issue_count"
+  awk -F '\t' '{ printf "- #%s %s\n", $1, $2 }' "$close_issues"
+  printf 'Pull requests to close: %s\n' "$pr_count"
+  awk -F '\t' '{ printf "- #%s %s [%s]\n", $1, $2, $3 }' "$close_prs"
+else
+  printf 'Clean plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+fi
 printf 'Repository: %s\n' "$canonical_repository"
 printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
 printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
@@ -386,19 +453,28 @@ printf 'Remote branches to remove: %s\n' "$remote_count"
 awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_remote"
 printf 'Preserved: %s\n' "$(wc -l <"$preserved" | tr -d ' ')"
 awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$preserved"
+printf 'Warnings: %s\n' "$(wc -l <"$warnings" | tr -d ' ')"
+awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$warnings"
 
 if [ "$action_count" -eq 0 ]; then
-  printf 'Nothing is eligible for cleanup.\n'
+  if [ "$operation" = "cancel" ]; then
+    printf 'Nothing is eligible for cancellation.\n'
+  else
+    printf 'Nothing is eligible for cleanup.\n'
+  fi
   exit 0
 fi
 
 plan_token=$({
-  printf 'repository\t%s\nroot\t%s\nstable\t%s\t%s\nlocal-only\t%s\n' \
-    "$canonical_repository" "$root_number" "$stable_branch" "$stable_oid" "$local_only"
+  printf 'operation\t%s\nrepository\t%s\nroot\t%s\nstable\t%s\t%s\nlocal-only\t%s\n' \
+    "$operation" "$canonical_repository" "$root_number" "$stable_branch" "$stable_oid" "$local_only"
+  sed 's/^/issue\t/' "$close_issues"
+  sed 's/^/pr\t/' "$close_prs"
   sed 's/^/worktree\t/' "$remove_worktrees"
   sed 's/^/local\t/' "$remove_local"
   sed 's/^/remote\t/' "$remove_remote"
   sed 's/^/preserved\t/' "$preserved"
+  sed 's/^/warning\t/' "$warnings"
 } | hash_plan)
 
 printf 'Confirmation token: %s\n' "$plan_token"
@@ -408,7 +484,7 @@ if [ -z "$confirmation" ]; then
 fi
 
 [ "$confirmation" = "$plan_token" ] || {
-  echo "clean.sh: the confirmation token does not match the current plan; review the new plan" >&2
+  echo "$command_name: the confirmation token does not match the current plan; review the new plan" >&2
   exit 2
 }
 
@@ -417,16 +493,24 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
   encoded_branch=$(jq -nr --arg value "$branch" '$value | @uri')
   if ! remote_state=$(gh api "repos/$canonical_repository/branches/$encoded_branch" \
     --jq '[.commit.sha, .protected] | @tsv' 2>/dev/null); then
-    echo "clean.sh: cannot revalidate remote branch $branch" >&2
+    echo "$command_name: cannot revalidate remote branch $branch" >&2
     exit 2
   fi
   remote_oid=$(printf '%s\n' "$remote_state" | cut -f1)
   remote_protected=$(printf '%s\n' "$remote_state" | cut -f2)
   [ "$remote_oid" = "$planned_oid" ] && [ "$remote_protected" = "false" ] || {
-    echo "clean.sh: remote branch $branch changed or became protected; no cleanup was applied" >&2
+    echo "$command_name: remote branch $branch changed or became protected; no cleanup was applied" >&2
     exit 2
   }
 done <"$remove_remote"
+
+while IFS="$(printf '\t')" read -r pr_number pr_url branch; do
+  [ -n "$pr_number" ] || continue
+  if ! close_error=$(gh pr close "$pr_number" --repo "$canonical_repository" 2>&1); then
+    printf '%s: failed to close pull request #%s\n%s\n' "$command_name" "$pr_number" "$close_error" >&2
+    exit 2
+  fi
+done <"$close_prs"
 
 while IFS="$(printf '\t')" read -r worktree_path branch manager; do
   [ -n "$worktree_path" ] || continue
@@ -434,7 +518,11 @@ while IFS="$(printf '\t')" read -r worktree_path branch manager; do
     worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
     supacode worktree delete --worktree "$worktree_id" --background --timeout 30
   else
-    git worktree remove "$worktree_path"
+    if [ "$operation" = "cancel" ]; then
+      git worktree remove --force "$worktree_path"
+    else
+      git worktree remove "$worktree_path"
+    fi
   fi
 done <"$remove_worktrees"
 
@@ -444,7 +532,7 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
   [ -n "$branch" ] || continue
   if current_ref=$(git rev-parse "refs/heads/$branch" 2>/dev/null); then
     [ "$current_ref" = "$planned_oid" ] || {
-      echo "clean.sh: local branch $branch changed during cleanup" >&2
+      echo "$command_name: local branch $branch changed during cleanup" >&2
       exit 2
     }
     git branch -D -- "$branch" >/dev/null
@@ -456,15 +544,28 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
   current_ref=$(git ls-remote --heads origin "refs/heads/$branch" | awk '{ print $1 }')
   if [ -n "$current_ref" ]; then
     [ "$current_ref" = "$planned_oid" ] || {
-      echo "clean.sh: remote branch $branch changed during cleanup" >&2
+      echo "$command_name: remote branch $branch changed during cleanup" >&2
       exit 2
     }
     if ! push_error=$(git push origin --delete "$branch" 2>&1); then
-      printf 'clean.sh: failed to delete remote branch %s\n%s\n' "$branch" "$push_error" >&2
+      printf '%s: failed to delete remote branch %s\n%s\n' "$command_name" "$branch" "$push_error" >&2
       exit 2
     fi
   fi
 done <"$remove_remote"
 
-printf 'Cleanup applied: %s worktree(s), %s local branch(es), %s remote branch(es).\n' \
-  "$worktree_count" "$local_count" "$remote_count"
+while IFS="$(printf '\t')" read -r issue_number issue_title; do
+  [ -n "$issue_number" ] || continue
+  if ! close_error=$(gh issue close "$issue_number" --repo "$canonical_repository" --reason 'not planned' 2>&1); then
+    printf '%s: failed to close issue #%s\n%s\n' "$command_name" "$issue_number" "$close_error" >&2
+    exit 2
+  fi
+done <"$close_issues"
+
+if [ "$operation" = "cancel" ]; then
+  printf 'Cancellation applied: %s issue(s), %s pull request(s), %s worktree(s), %s local branch(es), %s remote branch(es).\n' \
+    "$issue_count" "$pr_count" "$worktree_count" "$local_count" "$remote_count"
+else
+  printf 'Cleanup applied: %s worktree(s), %s local branch(es), %s remote branch(es).\n' \
+    "$worktree_count" "$local_count" "$remote_count"
+fi
