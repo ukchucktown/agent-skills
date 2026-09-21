@@ -1,0 +1,21 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "issue": {
+        "number": 61,
+        "title": "Merged child",
+        "state": "CLOSED",
+        "url": "https://github.com/example/agent-skills/issues/61",
+        "parent": {
+          "number": 60,
+          "title": "Completed effort",
+          "state": "CLOSED",
+          "url": "https://github.com/example/agent-skills/issues/60",
+          "parent": null
+        }
+      }
+    }
+  }
+}

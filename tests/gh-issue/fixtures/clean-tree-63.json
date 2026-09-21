@@ -1,0 +1,27 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "openPullRequests": { "totalCount": 0, "nodes": [] },
+      "issue": {
+        "number": 63,
+        "title": "Unmerged effort",
+        "state": "CLOSED",
+        "url": "https://github.com/example/agent-skills/issues/63",
+        "linkedBranches": {
+          "totalCount": 1,
+          "nodes": [
+            {
+              "ref": {
+                "name": "feat/issue-63-unmerged",
+                "repository": { "nameWithOwner": "example/agent-skills" }
+              }
+            }
+          ]
+        },
+        "subIssues": { "totalCount": 0, "nodes": [] }
+      }
+    }
+  }
+}

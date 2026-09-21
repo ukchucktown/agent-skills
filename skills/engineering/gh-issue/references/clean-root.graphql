@@ -1,0 +1,42 @@
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    defaultBranchRef {
+      name
+    }
+    issue(number: $number) {
+      ...CleanRootIssue
+      parent {
+        ...CleanRootIssue
+        parent {
+          ...CleanRootIssue
+          parent {
+            ...CleanRootIssue
+            parent {
+              ...CleanRootIssue
+              parent {
+                ...CleanRootIssue
+                parent {
+                  ...CleanRootIssue
+                  parent {
+                    ...CleanRootIssue
+                    parent {
+                      number
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment CleanRootIssue on Issue {
+  number
+  title
+  state
+  url
+}
