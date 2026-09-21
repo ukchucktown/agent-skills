@@ -236,7 +236,19 @@ plan_output=$(cd "$primary" && run_clean example/agent-skills 61)
 token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
 apply_output=$(cd "$primary" && run_clean --confirm "$token" example/agent-skills 61)
 printf '%s\n' "$apply_output" | grep -F \
+  'Confirmed cleanup plan summary' >/dev/null
+printf '%s\n' "$apply_output" | grep -F \
+  'Worktrees to remove: 2' >/dev/null
+printf '%s\n' "$apply_output" | grep -F \
   'Cleanup applied: 2 worktree(s), 2 local branch(es), 2 remote branch(es).' >/dev/null
+if printf '%s\n' "$apply_output" | grep -F "$root_worktree" >/dev/null; then
+  echo 'cleanup confirmation repeated worktree paths' >&2
+  exit 1
+fi
+if printf '%s\n' "$apply_output" | grep -F 'feat/issue-60-root at ' >/dev/null; then
+  echo 'cleanup confirmation repeated branch details' >&2
+  exit 1
+fi
 
 [ ! -d "$root_worktree" ]
 [ ! -d "$child_worktree" ]

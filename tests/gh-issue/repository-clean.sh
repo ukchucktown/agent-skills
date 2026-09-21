@@ -237,7 +237,19 @@ safe_token=$(printf '%s\n' "$all_plan_output" | awk '/^Confirmation token:/ { pr
 safe_apply_output=$(cd "$primary" && run_clean \
   --all --confirm "$safe_token" example/agent-skills)
 printf '%s\n' "$safe_apply_output" | grep -F \
+  'Confirmed repository cleanup plan summary' >/dev/null
+printf '%s\n' "$safe_apply_output" | grep -F \
+  'Selected groups: 4' >/dev/null
+printf '%s\n' "$safe_apply_output" | grep -F \
   'Repository cleanup applied: 1 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
+if printf '%s\n' "$safe_apply_output" | grep -F "$unselected_worktree" >/dev/null; then
+  echo 'repository cleanup confirmation repeated worktree paths' >&2
+  exit 1
+fi
+if printf '%s\n' "$safe_apply_output" | grep -F -- '- feat/unselected' >/dev/null; then
+  echo 'repository cleanup confirmation repeated branch details' >&2
+  exit 1
+fi
 [ ! -d "$unselected_worktree" ]
 if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/unselected; then
   echo 'repository cleanup --all left the local branch' >&2
@@ -288,7 +300,19 @@ force_token=$(printf '%s\n' "$force_plan" | awk '/^Confirmation token:/ { print 
 force_apply_output=$(cd "$primary" && run_clean \
   --force --all --confirm "$force_token" example/agent-skills)
 printf '%s\n' "$force_apply_output" | grep -F \
+  'Confirmed repository cleanup plan summary' >/dev/null
+printf '%s\n' "$force_apply_output" | grep -F \
+  'Risk policy: force' >/dev/null
+printf '%s\n' "$force_apply_output" | grep -F \
   'Repository cleanup applied: 2 worktree(s), 2 local branch(es), 2 remote branch(es).' >/dev/null
+if printf '%s\n' "$force_apply_output" | grep -F "$leftover_worktree" >/dev/null; then
+  echo 'forced repository cleanup confirmation repeated worktree paths' >&2
+  exit 1
+fi
+if printf '%s\n' "$force_apply_output" | grep -F -- '- feat/leftover' >/dev/null; then
+  echo 'forced repository cleanup confirmation repeated branch details' >&2
+  exit 1
+fi
 [ ! -d "$leftover_worktree" ]
 [ ! -d "$active_worktree" ]
 for branch in feat/leftover feat/active; do

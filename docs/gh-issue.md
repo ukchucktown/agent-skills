@@ -275,6 +275,12 @@ planning. Cleanup and cancellation use this sequence:
 If repository state changes before confirmation, the token becomes stale. The
 skill creates a new plan and requests a new confirmation.
 
+The commands emit discovery results and detailed plans as one buffered block.
+This output prevents incremental terminal redraws. A valid confirmation prints
+only a compact count summary before the command applies the plan. The command
+does not repeat every branch and worktree. A stale confirmation still prints
+the complete refreshed plan for review.
+
 The skill uses bounded GitHub queries and focused local inspection. It does not
 search every pull request, branch, worktree, or issue to increase confidence.
 When required evidence conflicts, it reports the conflict and waits for the

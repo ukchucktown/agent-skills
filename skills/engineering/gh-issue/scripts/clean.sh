@@ -463,38 +463,45 @@ local_count=$(wc -l <"$remove_local" | tr -d ' ')
 remote_count=$(wc -l <"$remove_remote" | tr -d ' ')
 issue_count=$(wc -l <"$close_issues" | tr -d ' ')
 pr_count=$(wc -l <"$close_prs" | tr -d ' ')
+preserved_count=$(wc -l <"$preserved" | tr -d ' ')
+warning_count=$(wc -l <"$warnings" | tr -d ' ')
 action_count=$((worktree_count + local_count + remote_count + issue_count + pr_count))
 
-if [ "$operation" = "cancel" ]; then
-  printf 'Cancel plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
-  printf 'Issues to close as Not planned: %s\n' "$issue_count"
-  awk -F '\t' '{ printf "- #%s %s\n", $1, $2 }' "$close_issues"
-  printf 'Pull requests to close: %s\n' "$pr_count"
-  awk -F '\t' '{ printf "- #%s %s [%s]\n", $1, $2, $3 }' "$close_prs"
-else
-  printf 'Clean plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
-fi
-printf 'Repository: %s\n' "$canonical_repository"
-printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
-printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
-
-printf 'Worktrees to remove: %s\n' "$worktree_count"
-awk -F '\t' '{ printf "- %s [%s] via %s\n", $1, $2, $3 }' "$remove_worktrees"
-printf 'Local branches to remove: %s\n' "$local_count"
-awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_local"
-printf 'Remote branches to remove: %s\n' "$remote_count"
-awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_remote"
-printf 'Preserved: %s\n' "$(wc -l <"$preserved" | tr -d ' ')"
-awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$preserved"
-printf 'Warnings: %s\n' "$(wc -l <"$warnings" | tr -d ' ')"
-awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$warnings"
+render_detailed_plan() {
+  if [ "$operation" = "cancel" ]; then
+    printf 'Cancel plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+    printf 'Issues to close as Not planned: %s\n' "$issue_count"
+    awk -F '\t' '{ printf "- #%s %s\n", $1, $2 }' "$close_issues"
+    printf 'Pull requests to close: %s\n' "$pr_count"
+    awk -F '\t' '{ printf "- #%s %s [%s]\n", $1, $2, $3 }' "$close_prs"
+  else
+    printf 'Clean plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+  fi
+  printf 'Repository: %s\n' "$canonical_repository"
+  printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
+  printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
+  printf 'Worktrees to remove: %s\n' "$worktree_count"
+  awk -F '\t' '{ printf "- %s [%s] via %s\n", $1, $2, $3 }' "$remove_worktrees"
+  printf 'Local branches to remove: %s\n' "$local_count"
+  awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_local"
+  printf 'Remote branches to remove: %s\n' "$remote_count"
+  awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_remote"
+  printf 'Preserved: %s\n' "$preserved_count"
+  awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$preserved"
+  printf 'Warnings: %s\n' "$warning_count"
+  awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$warnings"
+}
 
 if [ "$action_count" -eq 0 ]; then
-  if [ "$operation" = "cancel" ]; then
-    printf 'Nothing is eligible for cancellation.\n'
-  else
-    printf 'Nothing is eligible for cleanup.\n'
-  fi
+  plan_output=$({
+    render_detailed_plan
+    if [ "$operation" = "cancel" ]; then
+      printf 'Nothing is eligible for cancellation.\n'
+    else
+      printf 'Nothing is eligible for cleanup.\n'
+    fi
+  })
+  printf '%s\n' "$plan_output"
   exit 0
 fi
 
@@ -510,16 +517,44 @@ plan_token=$({
   sed 's/^/warning\t/' "$warnings"
 } | hash_plan)
 
-printf 'Confirmation token: %s\n' "$plan_token"
 if [ -z "$confirmation" ]; then
-  printf 'No changes were made. Confirm this exact plan before applying it.\n'
+  plan_output=$({
+    render_detailed_plan
+    printf 'Confirmation token: %s\n' "$plan_token"
+    printf 'No changes were made. Confirm this exact plan before applying it.\n'
+  })
+  printf '%s\n' "$plan_output"
   exit 0
 fi
 
 [ "$confirmation" = "$plan_token" ] || {
+  plan_output=$({
+    render_detailed_plan
+    printf 'Confirmation token: %s\n' "$plan_token"
+    printf 'No changes were made. Confirm this exact plan before applying it.\n'
+  })
+  printf '%s\n' "$plan_output"
   echo "$command_name: the confirmation token does not match the current plan; review the new plan" >&2
   exit 2
 }
+
+confirmation_summary=$({
+  if [ "$operation" = "cancel" ]; then
+    printf 'Confirmed cancellation plan summary\n'
+    printf 'Issues to close as Not planned: %s\n' "$issue_count"
+    printf 'Pull requests to close: %s\n' "$pr_count"
+  else
+    printf 'Confirmed cleanup plan summary\n'
+  fi
+  printf 'Repository: %s\n' "$canonical_repository"
+  printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
+  printf 'Worktrees to remove: %s\n' "$worktree_count"
+  printf 'Local branches to remove: %s\n' "$local_count"
+  printf 'Remote branches to remove: %s\n' "$remote_count"
+  printf 'Preserved: %s\n' "$preserved_count"
+  printf 'Warnings: %s\n' "$warning_count"
+})
+printf '%s\n' "$confirmation_summary"
 
 while IFS="$(printf '\t')" read -r branch planned_oid; do
   [ -n "$branch" ] || continue
