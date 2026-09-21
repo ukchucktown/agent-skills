@@ -173,6 +173,9 @@ run_clean() {
 candidate_output=$(cd "$primary" && run_clean example/agent-skills)
 printf '%s\n' "$candidate_output" | grep -F 'Repository cleanup candidates' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 3' >/dev/null
+printf '%s\n' "$candidate_output" | grep -E '^[0-9]+\. feat/leftover ' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F \
+  'Choose all selectable groups, comma-separated numbers or ranges, or exact branch names' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'feat/leftover' | grep -F \
   'warnings: worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
@@ -189,6 +192,17 @@ printf '%s\n' "$candidate_output" | grep -F \
 [ ! -s "$call_log" ]
 [ -d "$leftover_worktree" ]
 [ -d "$active_worktree" ]
+
+all_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
+printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 3' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Unselected selectable groups: 0' >/dev/null
+for branch in feat/leftover feat/active feat/unselected; do
+  printf '%s\n' "$all_plan_output" | grep -F -- "- $branch" >/dev/null
+done
+if (cd "$primary" && run_clean --all --select feat/leftover example/agent-skills >/dev/null 2>&1); then
+  echo 'repository cleanup accepted --all with --select' >&2
+  exit 1
+fi
 
 if blocked_output=$(cd "$primary" && run_clean --select feat/protected example/agent-skills 2>&1); then
   echo 'repository cleanup accepted a protected branch' >&2
@@ -242,10 +256,28 @@ for branch in feat/leftover feat/active; do
   fi
 done
 
-for worktree in "$protected_worktree" "$open_pr_worktree" "$unselected_worktree" "$locked_worktree"; do
+remaining_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
+printf '%s\n' "$remaining_plan_output" | grep -F 'Selected groups: 1' >/dev/null
+printf '%s\n' "$remaining_plan_output" | grep -F -- '- feat/unselected' >/dev/null
+remaining_token=$(printf '%s\n' "$remaining_plan_output" | awk '/^Confirmation token:/ { print $3 }')
+remaining_apply_output=$(cd "$primary" && run_clean \
+  --all --confirm "$remaining_token" example/agent-skills)
+printf '%s\n' "$remaining_apply_output" | grep -F \
+  'Repository cleanup applied: 1 worktree(s), 1 local branch(es), 1 remote branch(es).' >/dev/null
+[ ! -d "$unselected_worktree" ]
+if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/unselected; then
+  echo 'repository cleanup --all left the local branch' >&2
+  exit 1
+fi
+if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/unselected; then
+  echo 'repository cleanup --all left the remote branch' >&2
+  exit 1
+fi
+
+for worktree in "$protected_worktree" "$open_pr_worktree" "$locked_worktree"; do
   [ -d "$worktree" ]
 done
-for branch in feat/protected feat/open-pr feat/unselected feat/locked; do
+for branch in feat/protected feat/open-pr feat/locked; do
   "$real_git" -C "$primary" show-ref --verify --quiet "refs/heads/$branch"
   "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"
 done

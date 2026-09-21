@@ -74,6 +74,12 @@ Git, GitHub, filesystem, or Supacode commands.
 
 <important if="the user asks to clean repository artifacts without an issue number">
 
+Resolve the target from an explicit repository first. Otherwise use the
+repository containing the user's current workspace or working directory. Never
+substitute the skill's source repository or the repository used by earlier
+work. Run discovery from that repository's primary checkout on its stable
+branch and verify that the reported `Repository` is the intended target.
+
 Run repository cleanup discovery from the primary checkout on its stable
 branch:
 
@@ -81,19 +87,26 @@ branch:
 <skill-directory>/scripts/clean.sh OWNER/REPOSITORY
 ```
 
-Pass `.` when the current checkout is the target. The command returns
+Pass `.` when the current checkout is the target. The command returns numbered
 non-primary worktrees as branch groups and separates selectable groups from
-blocked groups. Discovery is read-only. Relay the candidates without adding
-branches from another search.
+blocked groups. Discovery is read-only. Relay the target repository and
+candidates without adding branches from another search or dropping their
+numbers.
 
 Ask the user to select one or more selectable groups. Use the harness's native
-multiple-selection control when it can represent every candidate. Otherwise,
-show a numbered list and accept numbers or exact branch names. Selection is
-permission to build the plan, not permission to delete.
+control only when it supports simultaneous selection of every candidate and an
+explicit Select all action. A single-choice picker does not qualify. Otherwise,
+show the numbered list once and accept `all`, comma-separated numbers, ranges,
+or exact branch names in one reply. Do not require the user to retype branch
+names when numbered candidates are available. Selection is permission to build
+the plan, not permission to delete.
 
-Build one combined plan by repeating `--select` for the chosen branches:
+For `all`, build one combined plan with `--all`. For a subset, resolve the
+chosen numbers or ranges from the displayed list and repeat `--select` for the
+corresponding branches:
 
 ```text
+<skill-directory>/scripts/clean.sh --all OWNER/REPOSITORY
 <skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] OWNER/REPOSITORY
 ```
 
@@ -108,6 +121,7 @@ Request one confirmation immediately before deletion. Apply the same selection
 and mode with the exact displayed token:
 
 ```text
+<skill-directory>/scripts/clean.sh --all --confirm TOKEN OWNER/REPOSITORY
 <skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] --confirm TOKEN OWNER/REPOSITORY
 ```
 

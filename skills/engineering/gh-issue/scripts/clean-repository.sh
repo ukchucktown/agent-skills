@@ -2,17 +2,22 @@
 set -eu
 
 usage() {
-  echo "usage: clean.sh [--local-only] [--select BRANCH]... [--confirm TOKEN] OWNER/REPOSITORY|." >&2
+  echo "usage: clean.sh [--local-only] [--all | --select BRANCH...] [--confirm TOKEN] OWNER/REPOSITORY|." >&2
   exit 64
 }
 
 local_only=false
+select_all=false
 confirmation=
 selected_branches=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --local-only)
       local_only=true
+      shift
+      ;;
+    --all)
+      select_all=true
       shift
       ;;
     --select)
@@ -33,6 +38,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$#" -eq 1 ] || usage
+[ "$select_all" = "false" ] || [ -z "$selected_branches" ] || usage
 repository=$1
 
 for command in git gh jq; do
@@ -259,6 +265,10 @@ done <"$worktree_rows"
 selectable_count=$(wc -l <"$candidates" | tr -d ' ')
 blocked_count=$(wc -l <"$blocked" | tr -d ' ')
 
+if [ "$select_all" = "true" ]; then
+  selected_branches=$(cut -f1 "$candidates")
+fi
+
 if [ -z "$selected_branches" ]; then
   printf 'Repository cleanup candidates\n'
   printf 'Repository: %s\n' "$canonical_repository"
@@ -267,11 +277,11 @@ if [ -z "$selected_branches" ]; then
   awk -F '\t' '{
     remote = ($5 == "" ? "absent" : $5)
     warning = ($6 == "" ? "none" : $6)
-    printf "- %s | %s | via %s | local %s | remote %s | warnings: %s\n", $1, $2, $3, $4, remote, warning
+    printf "%d. %s | %s | via %s | local %s | remote %s | warnings: %s\n", NR, $1, $2, $3, $4, remote, warning
   }' "$candidates"
   printf 'Blocked groups: %s\n' "$blocked_count"
   awk -F '\t' '{ printf "- %s | %s | %s\n", $1, $2, $3 }' "$blocked"
-  printf 'No changes were made. Select one or more branch groups to build a cleanup plan.\n'
+  printf 'No changes were made. Choose all selectable groups, comma-separated numbers or ranges, or exact branch names to build a cleanup plan.\n'
   exit 0
 fi
 
