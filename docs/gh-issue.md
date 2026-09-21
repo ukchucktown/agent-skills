@@ -161,6 +161,9 @@ one confirmation.
 
 `all` selects every safe candidate. It does not enable force cleanup.
 
+Repository cleanup accepts a squash-merged branch only if GitHub records the
+branch tip as a merged pull request's exact head.
+
 Use force cleanup only when you intend to discard unmerged, divergent, dirty,
 or Supacode-active work:
 
