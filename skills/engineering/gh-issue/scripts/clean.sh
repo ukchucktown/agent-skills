@@ -545,6 +545,14 @@ while IFS="$(printf '\t')" read -r pr_number pr_url branch; do
   fi
 done <"$close_prs"
 
+while IFS="$(printf '\t')" read -r issue_number issue_title; do
+  [ -n "$issue_number" ] || continue
+  if ! close_error=$(gh issue close "$issue_number" --repo "$canonical_repository" --reason 'not planned' 2>&1); then
+    printf '%s: failed to close issue #%s\n%s\n' "$command_name" "$issue_number" "$close_error" >&2
+    exit 2
+  fi
+done <"$close_issues"
+
 while IFS="$(printf '\t')" read -r worktree_path branch manager; do
   [ -n "$worktree_path" ] || continue
   if [ "$manager" = "supacode" ]; then
@@ -586,14 +594,6 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
     fi
   fi
 done <"$remove_remote"
-
-while IFS="$(printf '\t')" read -r issue_number issue_title; do
-  [ -n "$issue_number" ] || continue
-  if ! close_error=$(gh issue close "$issue_number" --repo "$canonical_repository" --reason 'not planned' 2>&1); then
-    printf '%s: failed to close issue #%s\n%s\n' "$command_name" "$issue_number" "$close_error" >&2
-    exit 2
-  fi
-done <"$close_issues"
 
 if [ "$operation" = "cancel" ]; then
   printf 'Cancellation applied: %s issue(s), %s pull request(s), %s worktree(s), %s local branch(es), %s remote branch(es).\n' \

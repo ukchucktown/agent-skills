@@ -73,6 +73,11 @@ if [ "${1:-}" = "remote" ] && [ "${2:-}" = "get-url" ] && [ "${3:-}" = "origin" 
   printf 'https://github.com/example/agent-skills.git\n'
   exit 0
 fi
+case " $* " in
+  *' worktree remove '*|*' branch -D '*|*' push origin --delete '*)
+    printf 'git %s\n' "$*" >>"$GH_CALL_LOG"
+    ;;
+esac
 exec "$REAL_GIT" "$@"
 EOF
 chmod +x "$fake_bin/git"
@@ -126,8 +131,12 @@ case "${1:-}:${2:-}" in
         ;;
     esac
     ;;
-  pr:close|issue:close)
+  pr:close)
     printf '%s\n' "$*" >>"$GH_CALL_LOG"
+    ;;
+  issue:close)
+    printf '%s\n' "$*" >>"$GH_CALL_LOG"
+    [ "${GH_FAIL_ISSUE:-}" != "${3:-}" ] || exit 1
     ;;
   *)
     printf 'unexpected gh call: %s\n' "$*" >&2
@@ -170,6 +179,7 @@ case "${1:-}:${2:-}:${3:-}" in
       "$SUPACODE_ACTIVE_ID") path=$SUPACODE_ACTIVE_PATH ;;
       *) exit 70 ;;
     esac
+    printf 'supacode worktree delete %s\n' "$id" >>"$GH_CALL_LOG"
     "$REAL_GIT" -C "$CANCEL_PRIMARY" worktree unlock "$path"
     "$REAL_GIT" -C "$CANCEL_PRIMARY" worktree remove --force "$path"
     ;;
@@ -189,6 +199,7 @@ run_cancel() {
   REAL_GIT="$real_git" \
   GH_FIXTURE_DIRECTORY="$fixture_directory" \
   GH_CALL_LOG="$call_log" \
+  GH_FAIL_ISSUE="${GH_FAIL_ISSUE:-}" \
   GH_TRUNCATED="${GH_TRUNCATED:-false}" \
   CANCEL_REMOTE="$remote" \
   CANCEL_PRIMARY="$primary" \
@@ -245,6 +256,23 @@ fi
 
 plan_output=$(cd "$primary" && run_cancel example/agent-skills 81)
 token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
+if (cd "$primary" && GH_FAIL_ISSUE=80 run_cancel --confirm "$token" example/agent-skills 81 >/dev/null 2>&1); then
+  echo 'cancel continued after failing to close an issue' >&2
+  exit 1
+fi
+grep -F 'pr close 182 --repo example/agent-skills' "$call_log" >/dev/null
+grep -F 'issue close 80 --repo example/agent-skills --reason not planned' "$call_log" >/dev/null
+if grep -E '^(supacode worktree delete|git (worktree remove|branch -D|push origin --delete))' "$call_log" >/dev/null; then
+  echo 'cancel removed an artifact after failing to close an issue' >&2
+  exit 1
+fi
+[ -d "$root_worktree" ]
+[ -d "$dirty_worktree" ]
+[ -d "$active_worktree" ]
+: >"$call_log"
+
+plan_output=$(cd "$primary" && run_cancel example/agent-skills 81)
+token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
 apply_output=$(cd "$primary" && run_cancel --confirm "$token" example/agent-skills 81)
 printf '%s\n' "$apply_output" | grep -F \
   'Cancellation applied: 4 issue(s), 1 pull request(s), 3 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
@@ -257,6 +285,19 @@ if grep -F 'issue close 84 ' "$call_log" >/dev/null; then
   echo 'cancel closed an already closed issue' >&2
   exit 1
 fi
+
+pr_close_line=$(grep -n -m 1 '^pr close ' "$call_log" | cut -d: -f1)
+first_issue_close_line=$(grep -n -m 1 '^issue close ' "$call_log" | cut -d: -f1)
+last_issue_close_line=$(grep -n '^issue close ' "$call_log" | tail -n 1 | cut -d: -f1)
+first_cleanup_line=$(grep -n -m 1 -E '^(supacode worktree delete|git (worktree remove|branch -D|push origin --delete))' "$call_log" | cut -d: -f1)
+[ "$pr_close_line" -lt "$first_issue_close_line" ] || {
+  echo 'cancel did not close pull requests before issues' >&2
+  exit 1
+}
+[ "$last_issue_close_line" -lt "$first_cleanup_line" ] || {
+  echo 'cancel removed worktrees or branches before closing every issue' >&2
+  exit 1
+}
 
 [ ! -d "$root_worktree" ]
 [ ! -d "$dirty_worktree" ]
