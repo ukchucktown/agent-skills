@@ -6,7 +6,7 @@ command_name=${GH_ISSUE_COMMAND:-clean.sh}
 usage() {
   if [ "$command_name" = "clean.sh" ]; then
     echo "usage: clean.sh [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
-    echo "       clean.sh [--local-only] [--all | --select BRANCH...] [--confirm TOKEN] OWNER/REPOSITORY|." >&2
+    echo "       clean.sh [--local-only] [--force] [--all | --select BRANCH...] [--confirm TOKEN] OWNER/REPOSITORY|." >&2
   else
     echo "usage: $command_name [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   fi
@@ -28,7 +28,7 @@ if [ "$command_name" = "clean.sh" ]; then
     fi
     case "$argument" in
       --confirm|--select) expect_value=true ;;
-      --local-only|--cancel|--all) ;;
+      --local-only|--cancel|--all|--force) ;;
       --) after_options=true ;;
       -*) ;;
       *) positional_count=$((positional_count + 1)) ;;

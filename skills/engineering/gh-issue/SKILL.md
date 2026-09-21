@@ -113,11 +113,18 @@ corresponding branches:
 ```
 
 Pass `--local-only` before the selections only when the user wants to preserve
-remote branches. Relay the plan without reconstructing it. Repository cleanup
-may discard dirty, divergent, unmerged, or Supacode-active selected work and
-shows those conditions as warnings. It keeps the primary checkout, default and
-protected branches, branches with open pull requests, unavailable worktrees,
-branches shared by multiple worktrees, and every unselected group.
+remote branches. Relay the plan without reconstructing it. Ordinary repository
+cleanup blocks dirty or Supacode-active worktrees, divergent local and remote
+tips, and branches whose tip is not contained in the stable branch. It also
+keeps the primary checkout, default and protected branches, branches with open
+pull requests, unavailable worktrees, branches shared by multiple worktrees,
+and every unselected group.
+
+Treat force cleanup as separate explicit intent. Never infer it from `all` or
+from confirmation of an ordinary cleanup plan. Only when the user explicitly
+asks to force cleanup may you rerun discovery and planning with `--force`.
+Force makes dirty, active, divergent, and unmerged groups selectable and shows
+those risks as warnings. It does not override the other protections.
 
 Request one confirmation immediately before deletion. Apply the same selection
 and mode with the exact displayed token:
@@ -126,6 +133,9 @@ and mode with the exact displayed token:
 <skill-directory>/scripts/clean.sh --all --confirm TOKEN OWNER/REPOSITORY
 <skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] --confirm TOKEN OWNER/REPOSITORY
 ```
+
+Keep `--force` on planning and confirmation commands only when the user
+explicitly requested force cleanup.
 
 If the command rejects a stale token, relay the new plan and request
 confirmation again. Repository cleanup changes no issue or pull-request state.
