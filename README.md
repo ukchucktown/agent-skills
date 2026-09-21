@@ -29,3 +29,6 @@ npx skills@latest add ukchucktown/agent-skills --skill gh-issue --agent codex --
 The CLI uses existing Git or GitHub CLI authentication for this private
 repository. Use `npx skills list`, `npx skills update`, and `npx skills remove`
 to manage installed skills.
+
+The `gh-issue` commands require Git, GitHub CLI, and `jq`. The start command
+can use Supacode when the global configuration selects it.

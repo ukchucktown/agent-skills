@@ -1,0 +1,24 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "issue": {
+        "number": 39,
+        "title": "Prerequisite",
+        "state": "OPEN",
+        "url": "https://github.com/example/agent-skills/issues/39",
+        "body": "",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "assignees": { "nodes": [] },
+        "labels": { "nodes": [] },
+        "parent": null,
+        "blockedBy": { "totalCount": 0, "nodes": [] },
+        "linkedBranches": {
+          "totalCount": 0,
+          "nodes": []
+        },
+        "subIssues": { "totalCount": 0, "nodes": [] }
+      }
+    }
+  }
+}

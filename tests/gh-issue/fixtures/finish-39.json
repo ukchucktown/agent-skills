@@ -1,0 +1,17 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "issue": {
+        "number": 39,
+        "title": "Prerequisite",
+        "state": "OPEN",
+        "url": "https://github.com/example/agent-skills/issues/39",
+        "labels": { "nodes": [] },
+        "parent": null,
+        "subIssues": { "totalCount": 0, "nodes": [] }
+      }
+    }
+  }
+}
