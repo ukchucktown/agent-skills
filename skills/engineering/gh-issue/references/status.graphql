@@ -1,0 +1,59 @@
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    issue(number: $number) {
+      number
+      title
+      state
+      url
+      body
+      updatedAt
+      assignees(first: 20) {
+        nodes {
+          login
+        }
+      }
+      labels(first: 20) {
+        nodes {
+          name
+        }
+      }
+      parent {
+        number
+        title
+        state
+        url
+      }
+      blockedBy(first: 20) {
+        totalCount
+        nodes {
+          number
+          title
+          state
+          url
+        }
+      }
+      subIssues(first: 100) {
+        totalCount
+        nodes {
+          number
+          title
+          state
+          url
+          subIssues {
+            totalCount
+          }
+          blockedBy(first: 20) {
+            totalCount
+            nodes {
+              number
+              title
+              state
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+}

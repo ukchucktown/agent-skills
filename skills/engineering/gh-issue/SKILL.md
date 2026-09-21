@@ -9,13 +9,14 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use the dependency-free helper at `scripts/gh-issue.mjs` for deterministic
-inspection and mutations. Never reproduce its Git, GitHub, hierarchy, or
-worktree logic ad hoc.
+Use `gh` directly for read-only GitHub inspection. Keep ordinary status bounded:
+do not recursively fetch every descendant, search the full pull-request
+inventory, or inspect local worktrees unless the user requests local work
+status.
 
-The current implementation supports read-only `status`. The scripts do not
-support `start`, `finish`, or `clean`. Explain this boundary. Do not approximate
-a mutating command with shell calls.
+The current implementation supports read-only `status`. It does not support
+`start`, `finish`, or `clean`. Explain this boundary. Do not approximate a
+mutating command with shell calls.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
@@ -32,20 +33,39 @@ requires confirmation before mutation.
 
 <important if="the user asks for issue status or what to work on next">
 
-Run:
+Resolve the repository from explicit `OWNER/REPO` input or from the current
+checkout. An explicit issue number does not require confirmation. Then run the
+query in `references/status.graphql` with one `gh` call:
 
 ```text
-node <skill-directory>/scripts/gh-issue.mjs status [issue-number] --json
+gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/status.graphql
 ```
 
-If it returns `selection_required`, present its candidates with the harness's
-native selection control. Use a short numbered question when no native control
-exists. Accept a manually entered issue number. Do not choose for the user.
+If no issue number is supplied, list at most ten recent open issues authored by
+the user and ten assigned to the user with `gh issue list`. Deduplicate them,
+then present the candidates with the harness's native selection control. Use a
+short numbered question when no native control exists. Accept a manually
+entered issue number. Do not choose for the user.
 
-Render the returned issue, classification, hierarchy, worktrees, branches, PRs,
-checks, blockers, conflicts, recommendation, recommendation reason, and next
-mechanical action. Status is read-only. A recommendation is never permission to
-start that issue.
+Classify an issue with children as compound and an issue without children as
+standalone. Treat only open blockers as active. For a compound issue, recommend
+the first open direct child with no active blocker. If that child is compound,
+repeat the same query for that child only until the recommendation reaches a
+standalone issue. Do not inspect sibling descendants.
+
+Render the issue state, classification, parent, direct-child progress, active
+blockers, recommendation, recommendation reason, and next mechanical action.
+Status is read-only. A recommendation is never permission to start that issue.
+If GitHub returns no issue or truncates a relationship, report that limit. Do
+not invent a complete status or recommendation from partial data.
+
+</important>
+
+<important if="the user explicitly asks for local implementation status, branches, worktrees, a pull request, or checks">
+
+After the bounded GitHub status query, inspect only the requested local or PR
+evidence. Match issue-shaped branch names and explicit PR issue references.
+Do not list or analyze unrelated pull requests or worktrees.
 
 </important>
 
@@ -85,10 +105,12 @@ This command is unavailable until its deterministic script is implemented.
 <important if="issue identity, hierarchy, ownership, changes, branches, or validation are ambiguous">
 
 If the evidence conflicts, show the conflict. Wait for the user to resolve the
-conflict before any related change. Native GitHub relationships, explicit `Parent:` or `Blocked
-by:` fields, and issue references in checklists or under Children, Sub-issues,
-Tasks, or Work items headings are valid evidence. Ordinary issue references are
-not hierarchy evidence.
+conflict before any related change. Prefer native GitHub relationships. When a
+native relationship is absent, explicit `Parent:` or `Blocked by:` fields and
+issue references in checklists or under Children, Sub-issues, Tasks, or Work
+items headings in the focused issue body are valid evidence. Ordinary issue
+references are not hierarchy evidence. Do not search other issue bodies during
+ordinary status.
 
 </important>
 
