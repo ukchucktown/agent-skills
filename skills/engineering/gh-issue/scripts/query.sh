@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: query.sh status|start OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: query.sh status|start|finish OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -13,7 +13,7 @@ repository=$2
 number=$3
 
 case "$mode" in
-  status|start) ;;
+  status|start|finish) ;;
   *) usage ;;
 esac
 
