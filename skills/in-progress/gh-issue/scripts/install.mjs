@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 
-import { lstatSync, mkdirSync, readlinkSync, symlinkSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  realpathSync,
+  symlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 function parseArguments(argv) {
@@ -77,9 +83,7 @@ export function applyInstallPlan(plan) {
   for (const entry of plan.links) {
     if (entry.action !== "create") continue;
     mkdirSync(dirname(entry.target), { recursive: true });
-    const linkTarget = process.platform === "win32"
-      ? resolve(entry.source)
-      : relative(dirname(entry.target), entry.source);
+    const linkTarget = resolve(entry.source);
     symlinkSync(linkTarget, entry.target, process.platform === "win32" ? "junction" : "dir");
   }
 }
@@ -109,4 +113,13 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+function isMainModule(metaUrl = import.meta.url, argvPath = process.argv[1]) {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(fileURLToPath(metaUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) await main();
