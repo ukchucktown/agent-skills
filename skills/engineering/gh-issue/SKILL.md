@@ -92,15 +92,21 @@ Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
-Run the wrapper and the complete read-only local inspection in one tool call.
+Run the wrapper and the compact read-only local inspection in one tool call.
 Do not resolve the origin in a separate call. In that same call, read
 `~/.config/agent-skills/config.json` when it exists, resolve the primary checkout
 from Git's common directory, and output:
 
-- `git worktree list --porcelain`.
+- The compact `git worktree list` output. Omit `--porcelain` because its HEAD
+  and lock metadata are not start evidence.
 - Local and remote refs that contain the bounded issue number.
 - The primary checkout's current branch and short status.
-- `supacode repo list` when Supacode is the selected or automatic manager.
+- Only the matching repository ID from `supacode repo list` when Supacode is the
+  selected or automatic manager.
+
+Do not emit unrelated refs, Supacode repository IDs, or per-worktree metadata.
+Keep the compact worktree branches because sibling patterns can identify a
+shared integration branch.
 
 The canonical configuration settings are top-level. Apply configured manager,
 root, or branch templates. Explicit user and loaded repository instructions
