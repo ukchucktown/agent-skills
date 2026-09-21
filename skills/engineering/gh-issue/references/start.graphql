@@ -9,6 +9,11 @@ query($owner: String!, $name: String!, $number: Int!) {
       title
       state
       url
+      labels(first: 20) {
+        nodes {
+          name
+        }
+      }
       subIssues {
         totalCount
       }
@@ -17,36 +22,77 @@ query($owner: String!, $name: String!, $number: Int!) {
         title
         state
         url
+        labels(first: 20) {
+          nodes {
+            name
+          }
+        }
+        subIssues(first: 100) {
+          totalCount
+          nodes {
+            number
+          }
+        }
         parent {
           number
           title
           state
           url
+          labels(first: 20) {
+            nodes {
+              name
+            }
+          }
           parent {
             number
             title
             state
             url
+            labels(first: 20) {
+              nodes {
+                name
+              }
+            }
             parent {
               number
               title
               state
               url
+              labels(first: 20) {
+                nodes {
+                  name
+                }
+              }
               parent {
                 number
                 title
                 state
                 url
+                labels(first: 20) {
+                  nodes {
+                    name
+                  }
+                }
                 parent {
                   number
                   title
                   state
                   url
+                  labels(first: 20) {
+                    nodes {
+                      name
+                    }
+                  }
                   parent {
                     number
                     title
                     state
                     url
+                    labels(first: 20) {
+                      nodes {
+                        name
+                      }
+                    }
                     parent {
                       number
                     }

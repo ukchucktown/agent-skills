@@ -73,9 +73,8 @@ Do not list or analyze unrelated pull requests or worktrees.
 <important if="the user asks to start or resume an issue">
 
 Resolve and display the issue and its ancestor hierarchy. If the skill infers
-an issue, confirm the issue before a state change. Create only the missing
-ancestor integration path and the requested issue worktree. Then stop. Do not
-begin implementation.
+an issue, confirm the issue before a state change. Then create only the branch
+and worktree required by the repository's policy. Stop before implementation.
 
 For an explicit issue, make one GitHub request with
 `references/start.graphql`:
@@ -84,21 +83,42 @@ For an explicit issue, make one GitHub request with
 gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/start.graphql
 ```
 
-Reject a missing or closed issue, a closed parent, or a hierarchy that exceeds
-the query depth. Use the returned default branch as the root base. Create an
-integration branch for every parent. Create an integration branch for the
-requested issue when it has children. Otherwise, create a task branch. Each
-integration branch uses the previous branch as its base. The task branch uses
-its direct parent's integration branch or the default branch.
+In the same tool call, read `~/.config/agent-skills/config.json` when it exists.
+The canonical settings are top-level. Apply configured manager, root, or branch
+templates. Explicit user and loaded repository instructions take precedence.
+Do not list or reread the skill files.
 
-Before mutation, resolve the primary checkout from Git's common directory.
-Fetch once, then inspect `git worktree list --porcelain` and exact matching
-local and remote branch refs. Reuse a matching worktree. Stop if the destination
-belongs to another branch or a required existing base worktree is dirty.
+Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
+Then make one batched local inspection. Resolve the primary checkout from Git's
+common directory. Inspect `git worktree list --porcelain`, only branch refs that
+contain the bounded issue number or match an issue or ancestor label, and the
+Supacode repository list. Use the returned JSON directly. Do not add a separate
+parsing command.
 
-Read `~/.config/agent-skills/config.json` when it exists and apply the
-`gh-issue` settings in `references/start-config.md`. Otherwise prefer Supacode
-when the primary repository is registered. Create each missing worktree with:
+Treat a unique branch or worktree with a bounded issue marker such as `-83-` as
+existing issue work, regardless of its naming prefix. If the issue already has
+a matching worktree, report it and stop. Do not inspect its commits, pull
+requests, checks, or relation to the base branch. Those checks belong to local
+implementation status and finish.
+
+For missing issue work, prefer an explicit configured or repository policy.
+Otherwise, infer a shared integration branch only when one candidate is
+supported by both the returned hierarchy and local evidence. Strong evidence
+includes a non-default current branch whose name matches an issue or ancestor
+label, or a repeated sibling branch prefix based on the direct parent's returned
+child numbers. Existing evidence replaces the generic ancestor branch layout.
+Do not inspect pull requests, issue bodies, or unrelated branches to strengthen
+an inference.
+
+If the evidence identifies one shared integration branch and one task prefix,
+show them and proceed. If it identifies neither or several, show the candidates
+and ask one question. For a new effort with no existing evidence, show the
+generic per-compound integration plan and ask before you create it.
+
+If worktree creation remains necessary, fetch once. Stop if the destination
+belongs to another branch or the required base worktree is dirty. Use the
+configured manager. In `auto` mode, prefer Supacode when the primary repository
+is registered. Create a new Supacode worktree with:
 
 ```text
 supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base BASE --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
@@ -118,6 +138,17 @@ git -C PRIMARY worktree add -b BRANCH DESTINATION BASE
 git -C PRIMARY worktree add DESTINATION BRANCH
 git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
 ```
+
+Before mutation, use no more than the one hierarchy query and one batched local
+inspection. If they do not resolve the base branch, branch name, destination,
+or manager, show the unresolved value and ask one question. Do not continue
+investigating.
+
+Treat this as a round-trip budget. Resolve existing issue work in at most two
+tool calls: configuration plus the hierarchy query, then the batched local
+inspection. New work may use one additional call that batches fetch, creation,
+any integration-branch push, and verification. Do not spend extra calls to
+improve confidence after the required evidence is sufficient.
 
 </important>
 
