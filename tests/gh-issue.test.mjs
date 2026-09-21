@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,23 +14,19 @@ import { fileURLToPath } from "node:url";
 import {
   issueReferences,
   parseIssueBody,
-} from "../skills/in-progress/gh-issue/scripts/lib/issue-body.mjs";
+} from "../skills/engineering/gh-issue/scripts/lib/issue-body.mjs";
 import {
   branchMatchesIssue,
   buildStatus,
-} from "../skills/in-progress/gh-issue/scripts/lib/status-model.mjs";
+} from "../skills/engineering/gh-issue/scripts/lib/status-model.mjs";
 import {
   inferIssueNumber,
   loadFixture,
-} from "../skills/in-progress/gh-issue/scripts/lib/runtime.mjs";
+} from "../skills/engineering/gh-issue/scripts/lib/runtime.mjs";
 import {
   parseArguments,
   runCommand,
-} from "../skills/in-progress/gh-issue/scripts/gh-issue.mjs";
-import {
-  applyInstallPlan,
-  createInstallPlan,
-} from "../skills/in-progress/gh-issue/scripts/install.mjs";
+} from "../skills/engineering/gh-issue/scripts/gh-issue.mjs";
 
 function issue(number, overrides = {}) {
   return {
@@ -284,76 +279,26 @@ test("mutating commands remain unavailable in the read-only foundation", async (
   assert.match(result.message, /read-only foundation/i);
 });
 
-test("installer gives all harnesses one canonical skill source", () => {
-  const directory = mkdtempSync(join(tmpdir(), "gh-issue-install-"));
-  const source = join(directory, "source", "gh-issue");
-  const home = join(directory, "home");
-
-  try {
-    mkdirSync(source, { recursive: true });
-    writeFileSync(join(source, "SKILL.md"), "---\nname: gh-issue\n---\n");
-    const plan = createInstallPlan({ home, source });
-    assert.equal(plan.adapters.codex, join(home, ".agents", "skills", "gh-issue"));
-    assert.equal(plan.adapters.copilot, plan.adapters.codex);
-    assert.equal(plan.adapters.claude, join(home, ".claude", "skills", "gh-issue"));
-    applyInstallPlan(plan);
-
-    assert.equal(lstatSync(plan.adapters.codex).isSymbolicLink(), true);
-    assert.equal(lstatSync(plan.adapters.claude).isSymbolicLink(), true);
-    assert.equal(
-      resolve(dirname(plan.adapters.codex), readlinkSync(plan.adapters.codex)),
-      resolve(source),
-    );
-    assert.equal(
-      resolve(dirname(plan.adapters.claude), readlinkSync(plan.adapters.claude)),
-      resolve(plan.adapters.codex),
-    );
-
-    const repeated = createInstallPlan({ home, source });
-    assert.deepEqual(
-      repeated.links.map((entry) => entry.action),
-      ["unchanged", "unchanged"],
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("installed helper runs through the canonical skill link", () => {
+test("helper runs when the installed skill is a symbolic link", () => {
   const directory = mkdtempSync(join(tmpdir(), "gh-issue-entrypoint-"));
-  const home = join(directory, "home");
   const testDirectory = dirname(fileURLToPath(import.meta.url));
-  const source = resolve(testDirectory, "../skills/in-progress/gh-issue");
+  const source = resolve(testDirectory, "../skills/engineering/gh-issue");
+  const installedSkill = join(directory, "skills", "gh-issue");
 
   try {
-    const plan = createInstallPlan({ home, source });
-    applyInstallPlan(plan);
-
-    const installedHelper = join(
-      plan.adapters.codex,
-      "scripts",
-      "gh-issue.mjs",
+    mkdirSync(dirname(installedSkill), { recursive: true });
+    symlinkSync(
+      source,
+      installedSkill,
+      process.platform === "win32" ? "junction" : "dir",
     );
+    const installedHelper = join(installedSkill, "scripts", "gh-issue.mjs");
     const result = spawnSync(process.execPath, [installedHelper, "--help"], {
       encoding: "utf8",
     });
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage:/);
-
-    const installedInstaller = join(
-      plan.adapters.codex,
-      "scripts",
-      "install.mjs",
-    );
-    const installerResult = spawnSync(
-      process.execPath,
-      [installedInstaller, "--help"],
-      { encoding: "utf8" },
-    );
-
-    assert.equal(installerResult.status, 0, installerResult.stderr);
-    assert.match(installerResult.stdout, /^Usage:/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
