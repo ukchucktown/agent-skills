@@ -173,7 +173,8 @@ spend extra calls to improve confidence.
 <important if="the user asks to finish an issue or prepare its PR">
 
 Treat an explicit issue number as authorization to review, validate, commit,
-push, and prepare its PR. Finish always returns a ready-for-review PR unmerged.
+push, prepare its PR, or close verified no-change work as completed. Finish
+returns a ready-for-review PR unmerged when the branch contains changes.
 
 Run the query wrapper without opening, listing, or reconstructing it:
 
@@ -222,6 +223,24 @@ Resolve the PR base from the first available source:
 Collect unresolved values into one question and stop. Do not inspect unrelated
 branches or pull requests.
 
+Classify the exact-head PR result before validation. Multiple matches or one
+closed unmerged PR are ambiguous. A merged PR means that the work is already
+delivered. Close the still-open issue as completed, report the merged PR, and
+stop.
+
+Use the resolved base to detect no-change work. The worktree must have an empty
+`git status --porcelain`, and `git diff --quiet BASE...HEAD --` must report no
+file difference. A clean worktree with a file difference continues through the
+normal finish path, even when all changes are already committed.
+
+For no-change work, an existing open PR conflicts with the empty branch. Ask
+one question and stop. When no exact-head PR exists, close the issue and report
+that no commit, push, or PR was necessary:
+
+```text
+gh issue close NUMBER --repo OWNER/REPOSITORY --reason completed
+```
+
 Review every changed path and the complete diff in the selected worktree.
 Separate intended issue work from unrelated changes. Use the validation commands
 named by loaded repository instructions or its immediately visible root task
@@ -232,11 +251,10 @@ Commit only the intended paths. Use a scoped message that includes the issue
 number, then push the selected branch with its upstream.
 
 Reuse the single open PR returned by the exact-head lookup. A closed unmerged PR
-or multiple matches is ambiguous. A merged PR means that the work is already
-delivered. Report it and stop. Otherwise, create a ready-for-review PR. Set the
-resolved base, summarize the delivered behavior and validation, and end the body
-with `Closes #NUMBER`. Update an existing PR when those values differ. Mark it
-ready when it is a draft.
+or multiple matches is ambiguous. Otherwise, create a ready-for-review PR. Set
+the resolved base, summarize the delivered behavior and validation, and end the
+body with `Closes #NUMBER`. Update an existing PR when those values differ. Mark
+it ready when it is a draft.
 
 Treat finish as a round-trip budget. Use the initial combined query and local
 inspection, one batched read for the exact PR and any compound base lookup, the
