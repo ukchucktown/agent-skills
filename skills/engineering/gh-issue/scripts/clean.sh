@@ -595,7 +595,7 @@ while IFS="$(printf '\t')" read -r worktree_path branch manager; do
     supacode worktree delete --worktree "$worktree_id" --background --timeout 30
   else
     if [ "$operation" = "cancel" ]; then
-      git worktree remove --force "$worktree_path"
+      git worktree remove --force --force "$worktree_path"
     else
       git worktree remove "$worktree_path"
     fi

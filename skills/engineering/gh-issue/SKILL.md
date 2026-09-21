@@ -137,7 +137,9 @@ Treat force cleanup as separate explicit intent. Never infer it from `all` or
 from confirmation of an ordinary cleanup plan. Only when the user explicitly
 asks to force cleanup may you rerun discovery and planning with `--force`.
 Force makes dirty, active, divergent, and unmerged groups selectable and shows
-those risks as warnings. It does not override the other protections.
+those risks as warnings. It also removes a selected Git worktree if the
+worktree acquires a lock after the command creates the plan. It does not
+override the other protections.
 
 Request one confirmation immediately before deletion. Apply the same selection
 and mode with the exact displayed token:
@@ -151,9 +153,10 @@ Keep `--force` on planning and confirmation commands only when the user
 explicitly requested force cleanup.
 
 If the command rejects a stale token, relay the new plan and request
-confirmation again. Repository cleanup changes no issue or pull-request state.
-Use issue cancellation when the requested action includes closing work as `Not
-planned`.
+confirmation again. If application fails after mutation starts, relay the
+partial-completion counts and rerun discovery before another plan. Repository
+cleanup changes no issue or pull-request state. Use issue cancellation when
+the requested action includes closing work as `Not planned`.
 
 </important>
 
