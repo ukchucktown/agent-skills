@@ -9,9 +9,8 @@ general installation. Promoted skills remain independently selectable.
 Current work:
 
 - `skills/engineering/gh-issue` — lightweight GitHub issue mechanics with a
-  read-only status foundation. `start`, `finish`, and `clean` remain
-  intentionally unavailable until their deterministic implementations are
-  reviewed.
+  bounded, read-only `gh` status query. `start`, `finish`, and `clean` remain
+  intentionally unavailable until their implementations are reviewed.
 
 Install a selected skill with the standard Agent Skills CLI:
 
@@ -29,5 +28,3 @@ npx skills@latest add ukchucktown/agent-skills --skill gh-issue --agent codex --
 The CLI uses existing Git or GitHub CLI authentication for this private
 repository. Use `npx skills list`, `npx skills update`, and `npx skills remove`
 to manage installed skills.
-
-Run `npm test` from the repository root to validate the deterministic helpers.
