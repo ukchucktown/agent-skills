@@ -88,9 +88,11 @@ branch:
 ```
 
 Pass `.` when the current checkout is the target. The command returns numbered
-non-primary worktrees as branch groups and separates selectable groups from
-blocked groups. Discovery is read-only. Relay the target repository and
-candidates without adding branches from another search or dropping their
+groups for non-stable local and remote branches, including branches whose
+worktrees are already gone. It groups matching local and remote branches by
+name, includes an attached worktree when present, and separates selectable
+groups from blocked groups. Discovery is read-only. Relay the target repository
+and candidates without adding branches from another search or dropping their
 numbers.
 
 Ask the user to select one or more selectable groups. Use the harness's native

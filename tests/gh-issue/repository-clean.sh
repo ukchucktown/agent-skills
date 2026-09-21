@@ -17,6 +17,9 @@ protected_worktree=$temporary_directory/protected
 open_pr_worktree=$temporary_directory/open-pr
 unselected_worktree=$temporary_directory/unselected
 locked_worktree=$temporary_directory/locked
+orphan_both_worktree=$temporary_directory/orphan-both
+orphan_local_worktree=$temporary_directory/orphan-local
+orphan_remote_worktree=$temporary_directory/orphan-remote
 
 "$real_git" init -q --bare "$remote"
 "$real_git" init -q -b main "$primary"
@@ -43,10 +46,19 @@ create_worktree feat/protected "$protected_worktree" protected.txt
 create_worktree feat/open-pr "$open_pr_worktree" open-pr.txt
 create_worktree feat/unselected "$unselected_worktree" unselected.txt
 create_worktree feat/locked "$locked_worktree" locked.txt
+create_worktree feat/orphan-both "$orphan_both_worktree" orphan-both.txt
+create_worktree feat/orphan-local "$orphan_local_worktree" orphan-local.txt
+create_worktree feat/orphan-remote "$orphan_remote_worktree" orphan-remote.txt
 
 "$real_git" -C "$primary" push -q -u origin main
 "$real_git" -C "$primary" push -q origin \
   feat/leftover feat/active feat/protected feat/open-pr feat/unselected feat/locked
+"$real_git" -C "$primary" push -q origin feat/orphan-both feat/orphan-remote
+
+"$real_git" -C "$primary" worktree remove "$orphan_both_worktree"
+"$real_git" -C "$primary" worktree remove "$orphan_local_worktree"
+"$real_git" -C "$primary" worktree remove "$orphan_remote_worktree"
+"$real_git" -C "$primary" branch -D feat/orphan-remote >/dev/null
 
 printf 'diverge\n' >>"$leftover_worktree/leftover.txt"
 "$real_git" -C "$leftover_worktree" add leftover.txt
@@ -172,7 +184,7 @@ run_clean() {
 
 candidate_output=$(cd "$primary" && run_clean example/agent-skills)
 printf '%s\n' "$candidate_output" | grep -F 'Repository cleanup candidates' >/dev/null
-printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 3' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 6' >/dev/null
 printf '%s\n' "$candidate_output" | grep -E '^[0-9]+\. feat/leftover ' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'Choose all selectable groups, comma-separated numbers or ranges, or exact branch names' >/dev/null
@@ -189,14 +201,17 @@ printf '%s\n' "$candidate_output" | grep -F \
   'feat/open-pr' | grep -F 'open pull request' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'feat/locked' | grep -F 'locked outside Supacode' >/dev/null
+for branch in feat/orphan-both feat/orphan-local feat/orphan-remote; do
+  printf '%s\n' "$candidate_output" | grep -F "$branch" | grep -F 'no worktree' >/dev/null
+done
 [ ! -s "$call_log" ]
 [ -d "$leftover_worktree" ]
 [ -d "$active_worktree" ]
 
 all_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
-printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 3' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 6' >/dev/null
 printf '%s\n' "$all_plan_output" | grep -F 'Unselected selectable groups: 0' >/dev/null
-for branch in feat/leftover feat/active feat/unselected; do
+for branch in feat/leftover feat/active feat/unselected feat/orphan-both feat/orphan-local feat/orphan-remote; do
   printf '%s\n' "$all_plan_output" | grep -F -- "- $branch" >/dev/null
 done
 if (cd "$primary" && run_clean --all --select feat/leftover example/agent-skills >/dev/null 2>&1); then
@@ -218,7 +233,7 @@ printf '%s\n' "$plan_output" | grep -F 'Selected groups: 2' >/dev/null
 printf '%s\n' "$plan_output" | grep -F 'Worktrees to remove: 2' >/dev/null
 printf '%s\n' "$plan_output" | grep -F 'Local branches to remove: 2' >/dev/null
 printf '%s\n' "$plan_output" | grep -F 'Remote branches to remove: 2' >/dev/null
-printf '%s\n' "$plan_output" | grep -F 'Unselected selectable groups: 1' >/dev/null
+printf '%s\n' "$plan_output" | grep -F 'Unselected selectable groups: 4' >/dev/null
 [ ! -s "$call_log" ]
 
 token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
@@ -257,13 +272,16 @@ for branch in feat/leftover feat/active; do
 done
 
 remaining_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
-printf '%s\n' "$remaining_plan_output" | grep -F 'Selected groups: 1' >/dev/null
+printf '%s\n' "$remaining_plan_output" | grep -F 'Selected groups: 4' >/dev/null
 printf '%s\n' "$remaining_plan_output" | grep -F -- '- feat/unselected' >/dev/null
+for branch in feat/orphan-both feat/orphan-local feat/orphan-remote; do
+  printf '%s\n' "$remaining_plan_output" | grep -F -- "- $branch" >/dev/null
+done
 remaining_token=$(printf '%s\n' "$remaining_plan_output" | awk '/^Confirmation token:/ { print $3 }')
 remaining_apply_output=$(cd "$primary" && run_clean \
   --all --confirm "$remaining_token" example/agent-skills)
 printf '%s\n' "$remaining_apply_output" | grep -F \
-  'Repository cleanup applied: 1 worktree(s), 1 local branch(es), 1 remote branch(es).' >/dev/null
+  'Repository cleanup applied: 1 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
 [ ! -d "$unselected_worktree" ]
 if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/unselected; then
   echo 'repository cleanup --all left the local branch' >&2
@@ -273,6 +291,18 @@ if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/uns
   echo 'repository cleanup --all left the remote branch' >&2
   exit 1
 fi
+for branch in feat/orphan-both feat/orphan-local; do
+  if "$real_git" -C "$primary" show-ref --verify --quiet "refs/heads/$branch"; then
+    echo "repository cleanup --all left local branch $branch" >&2
+    exit 1
+  fi
+done
+for branch in feat/orphan-both feat/orphan-remote; do
+  if "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"; then
+    echo "repository cleanup --all left remote branch $branch" >&2
+    exit 1
+  fi
+done
 
 for worktree in "$protected_worktree" "$open_pr_worktree" "$locked_worktree"; do
   [ -d "$worktree" ]
