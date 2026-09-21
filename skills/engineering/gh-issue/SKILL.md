@@ -130,11 +130,15 @@ corresponding branches:
 
 Pass `--local-only` before the selections only when the user wants to preserve
 remote branches. Relay the plan without reconstructing it. Ordinary repository
-cleanup blocks dirty or Supacode-active worktrees, divergent local and remote
-tips, and branches whose tip is not contained in the stable branch. It also
-keeps the primary checkout, default and protected branches, branches with open
-pull requests, unavailable worktrees, branches shared by multiple worktrees,
-and every unselected group.
+cleanup blocks dirty or Supacode-active worktrees and divergent local and
+remote tips. It accepts a branch tip under either condition:
+
+- The stable branch contains the tip.
+- A merged pull request records the tip as its exact head.
+
+It also keeps the primary checkout, default and protected branches, branches
+with open pull requests, unavailable worktrees, branches shared by multiple
+worktrees, and every unselected group.
 
 Treat force cleanup as separate explicit intent. Never infer it from `all` or
 from confirmation of an ordinary cleanup plan. Only when the user explicitly

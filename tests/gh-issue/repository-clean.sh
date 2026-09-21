@@ -20,6 +20,7 @@ locked_worktree=$temporary_directory/locked
 orphan_both_worktree=$temporary_directory/orphan-both
 orphan_local_worktree=$temporary_directory/orphan-local
 orphan_remote_worktree=$temporary_directory/orphan-remote
+squash_merged_worktree=$temporary_directory/squash-merged
 
 "$real_git" init -q --bare "$remote"
 "$real_git" init -q -b main "$primary"
@@ -49,14 +50,18 @@ create_worktree feat/locked "$locked_worktree" locked.txt
 create_worktree feat/orphan-both "$orphan_both_worktree" orphan-both.txt
 create_worktree feat/orphan-local "$orphan_local_worktree" orphan-local.txt
 create_worktree feat/orphan-remote "$orphan_remote_worktree" orphan-remote.txt
+create_worktree feat/squash-merged "$squash_merged_worktree" squash-merged.txt
 
 for branch in feat/unselected feat/orphan-both feat/orphan-local feat/orphan-remote; do
   "$real_git" -C "$primary" merge -q --no-ff "$branch" -m "Merge $branch"
 done
+"$real_git" -C "$primary" merge -q --squash feat/squash-merged
+"$real_git" -C "$primary" commit -q -m 'Squash merge feat/squash-merged'
 
 "$real_git" -C "$primary" push -q -u origin main
 "$real_git" -C "$primary" push -q origin \
-  feat/leftover feat/active feat/protected feat/open-pr feat/unselected feat/locked
+  feat/leftover feat/active feat/protected feat/open-pr feat/unselected feat/locked \
+  feat/squash-merged
 "$real_git" -C "$primary" push -q origin feat/orphan-both feat/orphan-remote
 
 "$real_git" -C "$primary" worktree remove "$orphan_both_worktree"
@@ -79,6 +84,7 @@ protected_worktree=$("$real_git" -C "$protected_worktree" rev-parse --show-tople
 open_pr_worktree=$("$real_git" -C "$open_pr_worktree" rev-parse --show-toplevel)
 unselected_worktree=$("$real_git" -C "$unselected_worktree" rev-parse --show-toplevel)
 locked_worktree=$("$real_git" -C "$locked_worktree" rev-parse --show-toplevel)
+squash_merged_worktree=$("$real_git" -C "$squash_merged_worktree" rev-parse --show-toplevel)
 
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
@@ -140,6 +146,26 @@ case "${1:-}:${2:-}" in
         printf '%s\t%s\n' "$oid" "$protected"
         ;;
     esac
+    ;;
+  pr:list)
+    branch=
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "--head" ]; then
+        branch=$2
+        break
+      fi
+      shift
+    done
+    printf 'pr list --head %s\n' "$branch" >>"$GH_CALL_LOG"
+    if [ "$branch" = "feat/squash-merged" ]; then
+      oid=$("$REAL_GIT" --git-dir="$CLEAN_REMOTE" rev-parse "refs/heads/$branch")
+      printf '[{"url":"https://github.com/example/agent-skills/pull/1","headRefOid":"%s"}]\n' "$oid"
+    elif [ "$branch" = "feat/leftover" ]; then
+      stale_oid=$("$REAL_GIT" --git-dir="$CLEAN_REMOTE" rev-parse refs/heads/main)
+      printf '[{"url":"https://github.com/example/agent-skills/pull/2","headRefOid":"%s"}]\n' "$stale_oid"
+    else
+      printf '[]\n'
+    fi
     ;;
   issue:*|pr:*)
     printf '%s\n' "$*" >>"$GH_CALL_LOG"
@@ -203,13 +229,14 @@ run_clean() {
 
 candidate_output=$(cd "$primary" && run_clean example/agent-skills)
 printf '%s\n' "$candidate_output" | grep -F 'Repository cleanup candidates' >/dev/null
-printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 4' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 5' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F 'Blocked groups: 5' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'Choose all selectable groups, comma-separated numbers or ranges, or exact branch names' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'feat/leftover' | grep -F \
   'worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
+grep -F 'pr list --head feat/leftover' "$call_log" >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'feat/active' | grep -F \
   'worktree is active in Supacode; branch tip is not in main' >/dev/null
@@ -222,18 +249,19 @@ printf '%s\n' "$candidate_output" | grep -F \
 for branch in feat/orphan-both feat/orphan-local feat/orphan-remote; do
   printf '%s\n' "$candidate_output" | grep -F "$branch" | grep -F 'no worktree' >/dev/null
 done
-[ ! -s "$call_log" ]
+printf '%s\n' "$candidate_output" | grep -F 'feat/squash-merged' | grep -F 'warnings: none' >/dev/null
+grep -F 'pr list --head feat/squash-merged' "$call_log" >/dev/null
 [ -d "$leftover_worktree" ]
 [ -d "$active_worktree" ]
 
 all_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
 printf '%s\n' "$all_plan_output" | grep -F 'Risk policy: safe only' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 4' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Worktrees to remove: 1' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Local branches to remove: 3' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Remote branches to remove: 3' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 5' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Worktrees to remove: 2' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Local branches to remove: 4' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Remote branches to remove: 4' >/dev/null
 printf '%s\n' "$all_plan_output" | grep -F 'Unselected selectable groups: 0' >/dev/null
-for branch in feat/unselected feat/orphan-both feat/orphan-local feat/orphan-remote; do
+for branch in feat/unselected feat/orphan-both feat/orphan-local feat/orphan-remote feat/squash-merged; do
   printf '%s\n' "$all_plan_output" | grep -F -- "- $branch" >/dev/null
 done
 if (cd "$primary" && run_clean --all --select feat/leftover example/agent-skills >/dev/null 2>&1); then
@@ -254,9 +282,9 @@ safe_apply_output=$(cd "$primary" && run_clean \
 printf '%s\n' "$safe_apply_output" | grep -F \
   'Confirmed repository cleanup plan summary' >/dev/null
 printf '%s\n' "$safe_apply_output" | grep -F \
-  'Selected groups: 4' >/dev/null
+  'Selected groups: 5' >/dev/null
 printf '%s\n' "$safe_apply_output" | grep -F \
-  'Repository cleanup applied: 1 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
+  'Repository cleanup applied: 2 worktree(s), 4 local branch(es), 4 remote branch(es).' >/dev/null
 if printf '%s\n' "$safe_apply_output" | grep -F "$unselected_worktree" >/dev/null; then
   echo 'repository cleanup confirmation repeated worktree paths' >&2
   exit 1
@@ -266,6 +294,7 @@ if printf '%s\n' "$safe_apply_output" | grep -F -- '- feat/unselected' >/dev/nul
   exit 1
 fi
 [ ! -d "$unselected_worktree" ]
+[ ! -d "$squash_merged_worktree" ]
 if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/unselected; then
   echo 'repository cleanup --all left the local branch' >&2
   exit 1
@@ -280,12 +309,20 @@ for branch in feat/orphan-both feat/orphan-local; do
     exit 1
   fi
 done
+if "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/squash-merged; then
+  echo 'repository cleanup --all left the squash-merged local branch' >&2
+  exit 1
+fi
 for branch in feat/orphan-both feat/orphan-remote; do
   if "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"; then
     echo "repository cleanup --all left remote branch $branch" >&2
     exit 1
   fi
 done
+if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/squash-merged; then
+  echo 'repository cleanup --all left the squash-merged remote branch' >&2
+  exit 1
+fi
 
 racy_lock_worktree=$temporary_directory/racy-lock
 create_worktree feat/racy-lock "$racy_lock_worktree" racy-lock.txt
@@ -398,6 +435,4 @@ for branch in feat/protected feat/open-pr feat/locked; do
   "$real_git" -C "$primary" show-ref --verify --quiet "refs/heads/$branch"
   "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"
 done
-[ ! -s "$call_log" ]
-
 printf 'gh-issue repository clean command tests passed\n'

@@ -173,6 +173,23 @@ printf '%s' "$repository_json" | jq -r '
   [.headRefName, (.number | tostring), .url] | @tsv
 ' >"$open_prs"
 
+branch_tip_reached_stable() {
+  branch=$1
+  branch_oid=$2
+  if git cat-file -e "${branch_oid}^{commit}" 2>/dev/null &&
+     git merge-base --is-ancestor "$branch_oid" "$stable_oid" 2>/dev/null; then
+    return 0
+  fi
+  if merged_prs=$(gh pr list --repo "$canonical_repository" --head "$branch" \
+       --state merged --limit 2 --json url,headRefOid 2>/dev/null); then
+    if printf '%s' "$merged_prs" | jq -e --arg oid "$branch_oid" \
+         'any(.[]; .headRefOid == $oid)' >/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 worktree_rows=$temporary_directory/worktree-rows
 awk '
   function emit() {
@@ -255,7 +272,7 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
     if [ -z "$reason" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
       risk="${risk}${risk:+; }local and remote tips differ"
     fi
-    if [ -z "$reason" ] && ! git merge-base --is-ancestor "$local_oid" "$stable_oid" 2>/dev/null; then
+    if [ -z "$reason" ] && ! branch_tip_reached_stable "$branch" "$local_oid"; then
       risk="${risk}${risk:+; }branch tip is not in $stable_branch"
     fi
     if [ -z "$reason" ] && [ -n "$risk" ]; then
@@ -305,7 +322,7 @@ while IFS= read -r branch; do
     risk="local and remote tips differ"
   fi
   tip_oid=${local_oid:-$remote_oid}
-  if [ -z "$reason" ] && ! git merge-base --is-ancestor "$tip_oid" "$stable_oid" 2>/dev/null; then
+  if [ -z "$reason" ] && ! branch_tip_reached_stable "$branch" "$tip_oid"; then
     risk="${risk}${risk:+; }branch tip is not in $stable_branch"
   fi
   if [ -z "$reason" ] && [ -n "$risk" ]; then
