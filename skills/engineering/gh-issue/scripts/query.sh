@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: query.sh status|start OWNER/REPOSITORY ISSUE_NUMBER" >&2
+  echo "usage: query.sh status|start OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -16,6 +16,23 @@ case "$mode" in
   status|start) ;;
   *) usage ;;
 esac
+
+if [ "$repository" = "." ]; then
+  remote=$(git remote get-url origin 2>/dev/null) || {
+    echo "query.sh: cannot resolve the current repository's origin" >&2
+    exit 69
+  }
+  case "$remote" in
+    git@github.com:*) repository=${remote#git@github.com:} ;;
+    https://github.com/*) repository=${remote#https://github.com/} ;;
+    ssh://git@github.com/*) repository=${remote#ssh://git@github.com/} ;;
+    *)
+      echo "query.sh: origin is not a github.com repository: $remote" >&2
+      exit 69
+      ;;
+  esac
+  repository=${repository%.git}
+fi
 
 case "$repository" in
   */*) ;;
