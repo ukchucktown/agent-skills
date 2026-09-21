@@ -1,0 +1,6 @@
+interface:
+  display_name: "GitHub Issue"
+  short_description: "Manage GitHub issue work safely"
+  default_prompt: "Use $gh-issue to show the status of my current GitHub issue."
+policy:
+  allow_implicit_invocation: true

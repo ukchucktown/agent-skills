@@ -3,5 +3,13 @@
 Personal Agent Skills and deterministic workflows for Codex, Claude Code, and
 GitHub Copilot.
 
-The repository is under active setup. Installable skills will live under
-`skills/` and will remain independently selectable.
+Skills under `skills/in-progress/` are reviewable but not yet promoted for
+general installation. Promoted skills remain independently selectable.
+
+Current work:
+
+- `gh-issue` — lightweight GitHub issue mechanics with a read-only status
+  foundation. `start`, `finish`, and `clean` remain intentionally unavailable
+  until their deterministic implementations are reviewed.
+
+Run `npm test` from the repository root to validate the deterministic helpers.

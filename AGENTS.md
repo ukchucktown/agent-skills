@@ -12,8 +12,9 @@ cross-harness instruction fragments, and deterministic workflow helpers.
   linked references.
 - Prefer deterministic, dependency-free scripts for repeated Git, GitHub,
   configuration, and worktree operations.
-- Keep user-invoked skills explicit. Shared skills may be model-invoked when
-  another skill must reach them.
+- Keep explicit-only skills out of automatic discovery. Enable model invocation
+  only when the accepted interface includes natural-language triggers or when
+  another skill must reach the skill.
 - Validate scripts through isolated fixtures. Tests must not inspect or change
   real skill installations, repositories, GitHub issues, or worktrees.
 
@@ -34,12 +35,3 @@ cross-harness instruction fragments, and deterministic workflow helpers.
 - Commit and push reviewed changes on feature branches. Do not push feature
   work directly to `main`.
 - Keep the repository private unless the user explicitly changes that choice.
-
-<!-- agent-skills:sdlc:start -->
-## Coordinated feature workflow
-
-Use the installed `sdlc-*` skills for coordinated GitHub features. Read
-`docs/agents/sdlc.md` for this repository's branch, label, validation, and
-merge settings. Keep ordinary issue and pull request work on the repository's
-existing workflow.
-<!-- agent-skills:sdlc:end -->
