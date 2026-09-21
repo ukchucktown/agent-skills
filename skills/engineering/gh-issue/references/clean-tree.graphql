@@ -7,6 +7,7 @@ query($owner: String!, $name: String!, $number: Int!) {
     openPullRequests: pullRequests(states: OPEN, first: 100) {
       totalCount
       nodes {
+        number
         headRefName
         url
       }
