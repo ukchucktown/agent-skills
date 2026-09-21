@@ -9,10 +9,10 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use `gh`, `git`, and the selected worktree manager directly. Do not create a
-helper program for this workflow. Keep each path bounded: do not recursively
-fetch every descendant, search the full pull-request inventory, or inspect
-unrelated branches and worktrees.
+Use the checked-in query wrapper for GitHub reads. Use `git` and the selected
+worktree manager directly when start requires local setup. Keep each path
+bounded: do not recursively fetch every descendant, search the full pull-request
+inventory, or inspect unrelated branches and worktrees.
 
 The current implementation supports `status` and `start`. It does not support
 `finish` or `clean`. Explain this boundary. Do not approximate an unavailable
@@ -35,12 +35,15 @@ confirmation before mutation.
 <important if="the user asks for issue status or what to work on next">
 
 Resolve the repository from explicit `OWNER/REPO` input or from the current
-checkout. An explicit issue number does not require confirmation. Then run the
-query in `references/status.graphql` with one `gh` call:
+checkout. An explicit issue number does not require confirmation. Run the
+wrapper directly without opening, listing, or reconstructing it:
 
 ```text
-gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/status.graphql
+<skill-directory>/scripts/query.sh status OWNER/REPOSITORY NUMBER
 ```
+
+The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
+directly. Do not add a parsing command.
 
 If no issue number is supplied, list at most ten recent open issues authored by
 the user and ten assigned to the user with `gh issue list`. Deduplicate them,
@@ -76,12 +79,15 @@ Resolve and display the issue and its ancestor hierarchy. If the skill infers
 an issue, confirm the issue before a state change. Then create only the branch
 and worktree required by the repository's policy. Stop before implementation.
 
-For an explicit issue, make one GitHub request with
-`references/start.graphql`:
+For an explicit issue, run the query wrapper without opening, listing, or
+reconstructing it:
 
 ```text
-gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/start.graphql
+<skill-directory>/scripts/query.sh start OWNER/REPOSITORY NUMBER
 ```
+
+The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
+directly. Do not add a parsing command.
 
 In the same tool call, read `~/.config/agent-skills/config.json` when it exists.
 The canonical settings are top-level. Apply configured manager, root, or branch
