@@ -1,0 +1,38 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "issue": {
+        "number": 39,
+        "url": "https://github.com/example/agent-skills/issues/39",
+        "projectItems": {
+          "totalCount": 1,
+          "nodes": [
+            {
+              "id": "PVTI_test",
+              "project": {
+                "id": "PVT_test",
+                "number": 1,
+                "title": "Agent Skills",
+                "owner": { "login": "example" },
+                "fields": { "totalCount": 0, "nodes": [] }
+              },
+              "fieldValues": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "name": "In Progress",
+                    "optionId": "progress",
+                    "field": { "id": "field", "name": "Status" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "subIssues": { "totalCount": 0, "nodes": [] },
+        "parent": null
+      }
+    }
+  }
+}

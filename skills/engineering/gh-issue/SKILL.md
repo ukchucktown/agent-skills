@@ -9,10 +9,11 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use the checked-in query wrapper for GitHub reads. Use `gh`, `git`, and the
-selected worktree manager directly when start requires GitHub or local setup.
-Keep each path bounded: do not recursively fetch every descendant, search the
-full pull-request inventory, or inspect unrelated branches and worktrees.
+Use the checked-in commands for status and finish. Use the query wrapper for
+start. Use `gh`, `git`, and the selected worktree manager directly when start
+requires GitHub or local setup. Keep each path bounded: do not recursively
+fetch every descendant, search the full pull-request inventory, or inspect
+unrelated branches and worktrees.
 
 The current implementation supports `status`, `start`, and `finish`. It does
 not support `clean`. Explain this boundary. Do not approximate an unavailable
@@ -37,27 +38,16 @@ confirmation before mutation.
 
 Resolve the repository from explicit `OWNER/REPO` input or from the current
 checkout. An explicit issue number does not require confirmation. Run the
-wrapper directly without opening, listing, or reconstructing it:
+status command directly without opening, listing, or reconstructing it:
 
 ```text
-<skill-directory>/scripts/query.sh status OWNER/REPOSITORY NUMBER
+<skill-directory>/scripts/status.sh OWNER/REPOSITORY NUMBER
 ```
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
-The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
-directly. Do not add a parsing command.
-
-Read the optional global configuration in the same tool call as the status
-wrapper. When `repositories[OWNER/REPOSITORY].projectStatus.enabled` is `true`,
-run the optional Project query in that call:
-
-```text
-<skill-directory>/scripts/query.sh project-status OWNER/REPOSITORY NUMBER
-```
-
-Repositories without that setting make no Project request. A Project query
-failure does not erase the ordinary status result. Report the unavailable
-Project status and its error.
+The command performs the bounded GitHub reads, applies the optional Project
+configuration, follows only the recommended compound path, and renders the
+complete result. Relay its output. Do not add a parsing or discovery command.
 
 If no issue number is supplied, list at most ten recent open issues authored by
 the user and ten assigned to the user with `gh issue list`. Deduplicate them,
@@ -65,19 +55,8 @@ then present the candidates with the harness's native selection control. Use a
 short numbered question when no native control exists. Accept a manually
 entered issue number. Do not choose for the user.
 
-Classify an issue with children as compound and an issue without children as
-standalone. Treat only open blockers as active. For a compound issue, recommend
-the first open direct child with no active blocker. If that child is compound,
-repeat the same query for that child only until the recommendation reaches a
-standalone issue. Do not inspect sibling descendants.
-
-Render the issue state, classification, parent, direct-child progress, active
-blockers, linked branches, configured Project status, recommendation,
-recommendation reason, and next mechanical action. A non-null linked branch or
-configured start value is GitHub-visible started evidence. Status is
-read-only. A recommendation is never permission to start that issue. If GitHub
-returns no issue or truncates a relationship, report that limit. Do not invent
-a complete status or recommendation from partial data.
+Status is read-only. A recommendation is never permission to start that issue.
+Report command errors directly. Do not reconstruct a result after an error.
 
 </important>
 
@@ -228,70 +207,21 @@ Treat an explicit issue number as authorization to review, validate, commit,
 push, prepare its PR, or close verified no-change work as completed. Finish
 returns a ready-for-review PR unmerged when the branch contains changes.
 
-Run the query wrapper without opening, listing, or reconstructing it:
+Run the finish command without opening, listing, or reconstructing it:
 
 ```text
-<skill-directory>/scripts/query.sh finish OWNER/REPOSITORY NUMBER
+<skill-directory>/scripts/finish.sh OWNER/REPOSITORY NUMBER
 ```
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
-The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
-directly. Do not add a parsing command.
+The command resolves the worktree, branch, base, exact-head pull request,
+direct children, worktree state, and merge-base diff. It closes verified
+no-change work as completed. Relay a completed or blocked result and stop.
+If the command cannot resolve a parent base, ask one question and rerun it with
+the reported `--base BRANCH` option.
 
-Run the wrapper and bounded local inspection in one tool call. In that call,
-read the optional global configuration and resolve the primary checkout from
-Git's common directory. Output the current branch, short status, worktree list,
-and local and remote refs that contain the bounded issue number.
-
-Prefer the current worktree when its branch has that issue marker. Otherwise,
-use one matching worktree and branch. Ask one question when the match is missing
-or not unique. End the inquiry there.
-
-Reject a missing or closed issue, a truncated hierarchy, or a direct-child
-result whose node count differs from `totalCount`. A compound issue also stops
-when a direct child is open.
-
-Use one batched read-only tool call after you resolve the branch. Query pull
-requests for that exact head branch. For a compound issue, also query open pull
-requests that target its integration branch. Any result identifies unfinished
-child delivery work and stops finish. Limit each result to two. Reuse these
-results through the rest of finish.
-
-```text
-gh pr list --repo OWNER/REPOSITORY --head BRANCH --state all --limit 2 --json number,title,state,isDraft,url,baseRefName,headRefName
-gh pr list --repo OWNER/REPOSITORY --base BRANCH --state open --limit 2 --json number,title,state,isDraft,url,baseRefName,headRefName
-```
-
-Run the second command only for a compound issue.
-
-Resolve the PR base from the first available source:
-
-1. An existing PR for the exact head branch.
-2. Explicit user or loaded repository instructions.
-3. One integration branch supported by the hierarchy and bounded local
-   evidence.
-4. The GitHub default branch when the issue has no parent.
-
-Collect unresolved values into one question and stop. Do not inspect unrelated
-branches or pull requests.
-
-Classify the exact-head PR result before validation. Multiple matches or one
-closed unmerged PR are ambiguous. A merged PR means that the work is already
-delivered. Close the still-open issue as completed, report the merged PR, and
-stop.
-
-Use the resolved base to detect no-change work. The worktree must have an empty
-`git status --porcelain`, and `git diff --quiet BASE...HEAD --` must report no
-file difference. A clean worktree with a file difference continues through the
-normal finish path, even when all changes are already committed.
-
-For no-change work, an existing open PR conflicts with the empty branch. Ask
-one question and stop. When no exact-head PR exists, close the issue and report
-that no commit, push, or PR was necessary:
-
-```text
-gh issue close NUMBER --repo OWNER/REPOSITORY --reason completed
-```
+When the command reports changed paths, use its worktree, branch, base, and
+pull-request values for the rest of finish. Do not repeat its inspection.
 
 Review every changed path and the complete diff in the selected worktree.
 Separate intended issue work from unrelated changes. Use the validation commands
@@ -302,16 +232,11 @@ ask one question and stop. Run the required checks and stop on failure.
 Commit only the intended paths. Use a scoped message that includes the issue
 number, then push the selected branch with its upstream.
 
-Reuse the single open PR returned by the exact-head lookup. A closed unmerged PR
-or multiple matches is ambiguous. Otherwise, create a ready-for-review PR. Set
-the resolved base, summarize the delivered behavior and validation, and end the
-body with `Closes #NUMBER`. Update an existing PR when those values differ. Mark
-it ready when it is a draft.
-
-Treat finish as a round-trip budget. Use the initial combined query and local
-inspection, one batched read for the exact PR and any compound base lookup, the
-repository's validation, and the required mutations. Ambiguity produces one
-question and no further tool calls. Never merge the PR.
+Reuse the pull request from the command output. Create a ready-for-review pull
+request when none exists. Set the reported base, summarize the delivered
+behavior and validation, and end the body with `Closes #NUMBER`. Update an
+existing pull request when those values differ. Mark it ready when it is a
+draft. Never merge the pull request.
 
 </important>
 
