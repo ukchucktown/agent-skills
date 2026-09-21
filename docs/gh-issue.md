@@ -155,9 +155,11 @@ gh-issue clean
 ```
 
 The workflow first lists every selectable branch group and every blocked group.
-Select `all`, a comma-separated list such as `2,4,7`, a range such as `2-6`, or
-exact branch names. The skill then shows the exact deletion plan and asks for
-one confirmation.
+Each branch appears once, with its worktree, local and remote references,
+warnings, and planned actions grouped beneath it. Select `all`, a
+comma-separated list such as `2,4,7`, a range such as `2-6`, or exact branch
+names. The skill then shows the exact deletion plan and asks for one
+confirmation.
 
 `all` selects every safe candidate. It does not enable force cleanup.
 
