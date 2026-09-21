@@ -262,6 +262,50 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
   fi
 done <"$worktree_rows"
 
+branch_names=$temporary_directory/branch-names
+{
+  cut -f1 "$local_branches"
+  cut -f1 "$remote_branches"
+} | awk -v stable="$stable_branch" 'NF && $0 != stable' | LC_ALL=C sort -u >"$branch_names"
+
+while IFS= read -r branch; do
+  [ -n "$branch" ] || continue
+  if awk -F '\t' -v branch="$branch" '$2 == branch { found = 1 } END { exit !found }' "$worktree_rows"; then
+    continue
+  fi
+
+  reason=
+  warning=
+  local_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$local_branches")
+  remote_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$remote_branches")
+  remote_protected=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$remote_branches")
+  open_pr=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$open_prs")
+
+  if [ "$remote_protected" = "true" ]; then
+    reason="remote branch is protected"
+  elif [ -n "$open_pr" ]; then
+    reason="open pull request: $open_pr"
+  fi
+
+  if [ -z "$reason" ] && [ -n "$local_oid" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
+    warning="local and remote tips differ"
+  fi
+  tip_oid=${local_oid:-$remote_oid}
+  if [ -z "$reason" ] && ! git merge-base --is-ancestor "$tip_oid" "$stable_oid" 2>/dev/null; then
+    warning="${warning}${warning:+; }branch tip is not in $stable_branch"
+  fi
+
+  if [ -n "$reason" ]; then
+    printf '%s\t%s\t%s\n' "$branch" "(no worktree)" "$reason" >>"$blocked"
+  else
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$branch" "(no worktree)" none "$local_oid" "$remote_oid" "$warning" >>"$candidates"
+  fi
+done <"$branch_names"
+
+LC_ALL=C sort -t "$(printf '\t')" -k1,1 -o "$candidates" "$candidates"
+LC_ALL=C sort -t "$(printf '\t')" -k1,1 -o "$blocked" "$blocked"
+
 selectable_count=$(wc -l <"$candidates" | tr -d ' ')
 blocked_count=$(wc -l <"$blocked" | tr -d ' ')
 
@@ -275,9 +319,11 @@ if [ -z "$selected_branches" ]; then
   printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
   printf 'Selectable groups: %s\n' "$selectable_count"
   awk -F '\t' '{
+    local = ($4 == "" ? "absent" : $4)
     remote = ($5 == "" ? "absent" : $5)
     warning = ($6 == "" ? "none" : $6)
-    printf "%d. %s | %s | via %s | local %s | remote %s | warnings: %s\n", NR, $1, $2, $3, $4, remote, warning
+    location = ($2 == "(no worktree)" ? "no worktree" : $2 " | via " $3)
+    printf "%d. %s | %s | local %s | remote %s | warnings: %s\n", NR, $1, location, local, remote, warning
   }' "$candidates"
   printf 'Blocked groups: %s\n' "$blocked_count"
   awk -F '\t' '{ printf "- %s | %s | %s\n", $1, $2, $3 }' "$blocked"
@@ -309,7 +355,7 @@ while IFS= read -r branch; do
   fi
   candidate=$(awk -F '\t' -v branch="$branch" '$1 == branch { print; exit }' "$candidates")
   [ -n "$candidate" ] || {
-    echo "clean.sh: branch $branch is not a selectable worktree group" >&2
+    echo "clean.sh: branch $branch is not a selectable cleanup group" >&2
     exit 2
   }
   worktree_path=$(printf '%s\n' "$candidate" | cut -f2)
@@ -317,8 +363,10 @@ while IFS= read -r branch; do
   local_oid=$(printf '%s\n' "$candidate" | cut -f4)
   remote_oid=$(printf '%s\n' "$candidate" | cut -f5)
   warning=$(printf '%s\n' "$candidate" | cut -f6-)
-  printf '%s\t%s\t%s\n' "$worktree_path" "$branch" "$manager" >>"$remove_worktrees"
-  printf '%s\t%s\n' "$branch" "$local_oid" >>"$remove_local"
+  if [ "$worktree_path" != "(no worktree)" ]; then
+    printf '%s\t%s\t%s\n' "$worktree_path" "$branch" "$manager" >>"$remove_worktrees"
+  fi
+  [ -z "$local_oid" ] || printf '%s\t%s\n' "$branch" "$local_oid" >>"$remove_local"
   [ -z "$warning" ] || printf '%s\t%s\n' "$branch" "$warning" >>"$warnings"
   if [ -n "$remote_oid" ]; then
     if [ "$local_only" = "true" ]; then
