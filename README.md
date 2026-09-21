@@ -9,8 +9,9 @@ general installation. Promoted skills remain independently selectable.
 Current work:
 
 - `skills/engineering/gh-issue` — lightweight GitHub issue mechanics with a
-  bounded, read-only `gh` status query. `start`, `finish`, and `clean` remain
-  intentionally unavailable until their implementations are reviewed.
+  bounded status query and deterministic issue worktree setup. `finish` and
+  `clean` remain intentionally unavailable until their implementations are
+  reviewed.
 
 Install a selected skill with the standard Agent Skills CLI:
 

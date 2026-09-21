@@ -9,14 +9,15 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use `gh` directly for read-only GitHub inspection. Keep ordinary status bounded:
-do not recursively fetch every descendant, search the full pull-request
-inventory, or inspect local worktrees unless the user requests local work
-status.
+Use `gh` directly for read-only GitHub inspection. Use the deterministic start
+script for worktree setup. Do not add exploratory commands before either fast
+path. Keep ordinary status bounded: do not recursively fetch every descendant,
+search the full pull-request inventory, or inspect local worktrees unless the
+user requests local work status.
 
-The current implementation supports read-only `status`. It does not support
-`start`, `finish`, or `clean`. Explain this boundary. Do not approximate a
-mutating command with shell calls.
+The current implementation supports `status` and `start`. It does not support
+`finish` or `clean`. Explain this boundary. Do not approximate an unavailable
+command with shell calls.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
@@ -24,10 +25,11 @@ Map only clear start, resume, status, finish, prepare-PR, clean, or clean-up
 intent to this skill. A bare issue reference or a request to discuss, create,
 review, close, prioritize, or merge an issue is outside this workflow.
 
-For a natural-language request that would mutate state, show the resolved issue
-and planned mutations, then request confirmation. An explicit `gh-issue`
-command is already authorization for that command. An inferred issue always
-requires confirmation before mutation.
+Treat `start issue NUMBER`, `issue start NUMBER`, `GitHub issue NUMBER start`,
+and equivalent unambiguous imperatives as explicit authorization. An explicit
+`gh-issue` command is also authorization. If you must infer the issue or
+intended action, show the resolved issue and dry-run plan. Then request
+confirmation before mutation.
 
 </important>
 
@@ -76,7 +78,20 @@ an issue, confirm the issue before a state change. Create only the missing
 ancestor integration path and the requested issue worktree. Then stop. Do not
 begin implementation.
 
-This command is unavailable until its deterministic script is implemented.
+For an explicit issue, run the script directly without a separate status query:
+
+```text
+node <skill-directory>/scripts/start.mjs --issue NUMBER --repository CHECKOUT
+```
+
+`CHECKOUT` may be the primary checkout or any linked worktree. If confirmation
+is required, first add `--dry-run`, show its plan, and run without `--dry-run`
+only after confirmation. Pass `--json` when structured output is useful. Do not
+repeat the script's GitHub, branch, worktree, or Supacode inspection manually.
+
+The script prefers a registered Supacode repository and otherwise uses native
+Git. See `references/start-config.md` for optional overrides. If the script
+reports a conflict, show it and stop. Do not recreate its mutations by hand.
 
 </important>
 
