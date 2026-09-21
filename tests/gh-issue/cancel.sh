@@ -275,7 +275,19 @@ plan_output=$(cd "$primary" && run_cancel example/agent-skills 81)
 token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
 apply_output=$(cd "$primary" && run_cancel --confirm "$token" example/agent-skills 81)
 printf '%s\n' "$apply_output" | grep -F \
+  'Confirmed cancellation plan summary' >/dev/null
+printf '%s\n' "$apply_output" | grep -F \
+  'Worktrees to remove: 3' >/dev/null
+printf '%s\n' "$apply_output" | grep -F \
   'Cancellation applied: 4 issue(s), 1 pull request(s), 3 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
+if printf '%s\n' "$apply_output" | grep -F "$root_worktree" >/dev/null; then
+  echo 'cancel confirmation repeated worktree paths' >&2
+  exit 1
+fi
+if printf '%s\n' "$apply_output" | grep -F 'feat/issue-80-root at ' >/dev/null; then
+  echo 'cancel confirmation repeated branch details' >&2
+  exit 1
+fi
 
 grep -F 'pr close 182 --repo example/agent-skills' "$call_log" >/dev/null
 for issue in 80 81 82 83; do

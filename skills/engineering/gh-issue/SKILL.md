@@ -18,6 +18,12 @@ full pull-request inventory, or inspect unrelated branches and worktrees.
 The current implementation supports `status`, `start`, `finish`, `clean`, and
 `cancel`.
 
+Cleanup and cancellation commands emit discovery and detailed plans as one
+buffered block. A confirmed command prints a compact count summary before it
+applies the unchanged plan. Relay only that summary and the final result. Do
+not repeat the detailed branch and worktree lists. If a confirmation token is
+stale, the command prints the refreshed detailed plan for review.
+
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
 Map only clear start, resume, status, finish, prepare-PR, clean, clean-up,
