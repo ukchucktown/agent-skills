@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { buildStatus } from "./lib/status-model.mjs";
 import {
   collectLiveWorkState,
@@ -199,4 +200,13 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+export function isMainModule(metaUrl = import.meta.url, argvPath = process.argv[1]) {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(fileURLToPath(metaUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) await main();
