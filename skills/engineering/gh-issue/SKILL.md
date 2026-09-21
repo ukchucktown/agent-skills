@@ -9,11 +9,11 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use the checked-in commands for status and finish. Use the query wrapper for
-start. Use `gh`, `git`, and the selected worktree manager directly when start
-requires GitHub or local setup. Keep each path bounded: do not recursively
-fetch every descendant, search the full pull-request inventory, or inspect
-unrelated branches and worktrees.
+Use the checked-in commands for status, Project synchronization, and finish.
+Use the query wrapper for the remaining start reads. Use `gh`, `git`, and the
+selected worktree manager directly when start requires GitHub or local setup.
+Keep each path bounded: do not recursively fetch every descendant, search the
+full pull-request inventory, or inspect unrelated branches and worktrees.
 
 The current implementation supports `status`, `start`, and `finish`. It does
 not support `clean`. Explain this boundary. Do not approximate an unavailable
@@ -85,19 +85,14 @@ Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
-When `repositories[OWNER/REPOSITORY].projectStatus.enabled` is `true`, run
-`query.sh project-status` for the same issue in this initial tool call. Also
-check that GitHub CLI authentication has `read:project` and `project` scopes.
-The optional object uses `field` and `startOption`, with `Status` and `In
-Progress` as defaults. Repositories without the enabled setting make no Project
-request. A missing scope, truncated Project result, or missing or duplicated
-configured field or option stops start before any mutation. Report one clear
-corrective action.
-
 Run the wrapper and the compact read-only local inspection in one tool call.
 Do not resolve the origin in a separate call. In that same call, read
-`~/.config/agent-skills/config.json` when it exists, resolve the primary checkout
-from Git's common directory, and output:
+the effective Project settings with the command below, resolve the primary
+checkout from Git's common directory, and output:
+
+```text
+<skill-directory>/scripts/project-config.sh OWNER/REPOSITORY
+```
 
 - The compact `git worktree list` output. Omit `--porcelain` because its HEAD
   and lock metadata are not start evidence.
@@ -110,10 +105,11 @@ Do not emit unrelated refs, Supacode repository IDs, or per-worktree metadata.
 Keep the compact worktree branches because sibling patterns can identify a
 shared integration branch.
 
-Shared configuration settings are top-level. Project settings live under the
-exact repository entry. Apply configured manager, root, or branch templates.
-Explicit user and loaded repository instructions take precedence. Do not list
-or reread the skill files.
+Shared configuration settings are top-level. A top-level `projectStatus`
+applies only when its owner matches the repository owner. An exact repository
+entry can disable or override it. Apply configured manager, root, or branch
+templates. Explicit user and loaded repository instructions take precedence.
+Do not list or reread the skill files.
 
 Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
 Also reject a truncated linked-branch result. Use only the data from the
@@ -130,10 +126,6 @@ through the configured manager. Do not create a second branch. Do not inspect
 commits, pull requests, checks, or relation to the base branch. Those checks
 belong to local implementation status and finish.
 
-When a configured Project already has its start value but no linked or local
-issue branch exists, report possible work by another contributor and stop. Do
-not create duplicate work from local absence alone.
-
 For missing issue work, prefer an explicit configured or repository policy.
 Otherwise, infer a shared integration branch only when one candidate is
 supported by both the returned hierarchy and local evidence. Strong evidence
@@ -149,15 +141,19 @@ them and ask one question. For an explicit start with no existing pattern, show
 the generic per-compound integration plan and create it without another
 confirmation.
 
-If configured Project items need an update, make those edits first in the
-mutation call. Update the focused issue and every ancestor in its start plan.
-Use each exact Project match returned by the optional query:
+In the mutation call, synchronize the configured Project before branch
+creation:
 
 ```text
-gh project item-edit PROJECT_NUMBER --owner PROJECT_OWNER --url ISSUE_URL --field FIELD --value START_OPTION
+<skill-directory>/scripts/project-start.sh OWNER/REPOSITORY NUMBER
 ```
 
-Stop on an update failure before branch creation.
+The command validates Project access and configuration, adds missing items to a
+configured target Project, and updates the focused issue and its open ancestors.
+Stop on an error before branch creation. When it reports that the focused issue
+already had the start value and no linked or local issue branch exists, report
+possible work by another contributor and stop. Do not create duplicate work
+from local absence alone.
 
 Create every missing issue branch as a GitHub-linked remote branch from its
 resolved base. This applies to compound integration branches and standalone task
@@ -192,12 +188,12 @@ git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
 ```
 
 Treat this as a round-trip budget. Resolve issue work in one tool call that
-combines the query and local inspection. Any required Project synchronization or
-new work may use one additional call that batches Project updates, linked-branch
-creation, fetch, worktree creation, and verification. If the first call does not
-resolve the base branch, branch name, destination, or manager, show the
-unresolved value and ask one question. Do not investigate or spend extra calls
-to improve confidence.
+combines the query, effective Project configuration, and local inspection. Any
+required Project synchronization or new work may use one additional call that
+batches Project updates, linked-branch creation, fetch, worktree creation, and
+verification. If the first call does not resolve the base branch, branch name,
+destination, or manager, show the unresolved value and ask one question. Do not
+investigate or spend extra calls to improve confidence.
 
 </important>
 

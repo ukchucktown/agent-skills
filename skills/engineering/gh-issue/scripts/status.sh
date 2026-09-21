@@ -73,39 +73,60 @@ fi
 
 project_status="not configured"
 project_started=false
-config_path=${AGENT_SKILLS_CONFIG:-${HOME}/.config/agent-skills/config.json}
-if [ -r "$config_path" ]; then
-  project_enabled=$(jq -r --arg repository "$canonical_repository" '
-    .repositories[$repository].projectStatus.enabled // false
-  ' "$config_path" 2>/dev/null || printf 'invalid')
-
+if project_config=$("$script_directory/project-config.sh" "$canonical_repository" 2>&1); then
+  project_enabled=$(printf '%s' "$project_config" | jq -r '.enabled')
   if [ "$project_enabled" = "true" ]; then
-    project_field=$(jq -r --arg repository "$canonical_repository" '
-      .repositories[$repository].projectStatus.field // "Status"
-    ' "$config_path")
-    project_start_option=$(jq -r --arg repository "$canonical_repository" '
-      .repositories[$repository].projectStatus.startOption // "In Progress"
-    ' "$config_path")
+    project_field=$(printf '%s' "$project_config" | jq -r '.field')
+    project_start_option=$(printf '%s' "$project_config" | jq -r '.startOption')
+    project_targeted=$(printf '%s' "$project_config" | jq -r '.targeted')
+    project_owner=$(printf '%s' "$project_config" | jq -r '.owner // ""')
+    project_number=$(printf '%s' "$project_config" | jq -r '.number // 0')
 
     if project_json=$("$script_directory/query.sh" project-status "$canonical_repository" "$number" 2>&1); then
-      project_status=$(printf '%s' "$project_json" | jq -r --arg field "$project_field" '
-        [.data.repository.issue.projectItems.nodes[].fieldValues.nodes[] |
-          select(.field.name == $field) |
-          .name] | unique |
-        if length == 0 then "no value" else join(", ") end
-      ')
-      if printf '%s' "$project_json" | jq -e --arg field "$project_field" --arg option "$project_start_option" '
-        any(.data.repository.issue.projectItems.nodes[].fieldValues.nodes[];
-          .field.name == $field and .name == $option)
-      ' >/dev/null; then
-        project_started=true
+      project_total=$(printf '%s' "$project_json" | jq -r '.data.repository.issue.projectItems.totalCount')
+      project_loaded=$(printf '%s' "$project_json" | jq -r '.data.repository.issue.projectItems.nodes | length')
+      if [ "$project_total" -ne "$project_loaded" ]; then
+        project_status="unavailable: GitHub truncated the Project item list"
+      else
+        project_status=$(printf '%s' "$project_json" | jq -r \
+          --arg field "$project_field" \
+          --arg owner "$project_owner" \
+          --argjson number "$project_number" \
+          --argjson targeted "$project_targeted" '
+          def matching_items:
+            [.data.repository.issue.projectItems.nodes[] |
+              select(($targeted | not) or
+                (.project.number == $number and
+                 ((.project.owner.login | ascii_downcase) == ($owner | ascii_downcase))))];
+          matching_items as $items |
+          [$items[].fieldValues.nodes[] |
+            select(.field.name == $field) |
+            .name] | unique as $values |
+          if $targeted and ($items | length) == 0 then "not in project"
+          elif ($values | length) == 0 then "no value"
+          else $values | join(", ") end
+        ')
+        if printf '%s' "$project_json" | jq -e \
+          --arg field "$project_field" \
+          --arg option "$project_start_option" \
+          --arg owner "$project_owner" \
+          --argjson number "$project_number" \
+          --argjson targeted "$project_targeted" '
+          any(.data.repository.issue.projectItems.nodes[];
+            (($targeted | not) or
+             (.project.number == $number and
+              ((.project.owner.login | ascii_downcase) == ($owner | ascii_downcase)))) and
+            any(.fieldValues.nodes[]; .field.name == $field and .name == $option))
+        ' >/dev/null; then
+          project_started=true
+        fi
       fi
     else
       project_status="unavailable: $project_json"
     fi
-  elif [ "$project_enabled" = "invalid" ]; then
-    project_status="unavailable: invalid configuration"
   fi
+else
+  project_status="unavailable: $project_config"
 fi
 
 local_worktrees=none

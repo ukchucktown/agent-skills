@@ -39,6 +39,8 @@ query($owner: String!, $name: String!, $number: Int!) {
 
 fragment ProjectIssue on Issue {
   number
+  title
+  state
   url
   projectItems(first: 10) {
     totalCount
