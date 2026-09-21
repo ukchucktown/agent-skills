@@ -4,6 +4,8 @@
       "nameWithOwner": "example/agent-skills",
       "issue": {
         "number": 39,
+        "title": "Prerequisite",
+        "state": "OPEN",
         "url": "https://github.com/example/agent-skills/issues/39",
         "projectItems": {
           "totalCount": 1,
@@ -15,7 +17,20 @@
                 "number": 1,
                 "title": "Agent Skills",
                 "owner": { "login": "example" },
-                "fields": { "totalCount": 0, "nodes": [] }
+                "fields": {
+                  "totalCount": 1,
+                  "nodes": [
+                    {
+                      "id": "field",
+                      "name": "Status",
+                      "options": [
+                        { "id": "todo", "name": "Todo" },
+                        { "id": "progress", "name": "In Progress" },
+                        { "id": "done", "name": "Done" }
+                      ]
+                    }
+                  ]
+                }
               },
               "fieldValues": {
                 "totalCount": 1,

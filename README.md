@@ -31,4 +31,6 @@ repository. Use `npx skills list`, `npx skills update`, and `npx skills remove`
 to manage installed skills.
 
 The `gh-issue` commands require Git, GitHub CLI, and `jq`. The start command
-can use Supacode when the global configuration selects it.
+can use Supacode when the global configuration selects it. It can also add
+personal repository issues to one configured GitHub Project and set them to
+`In Progress`; GitHub Project workflows can set closed issues to `Done`.

@@ -1,0 +1,104 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "issue": {
+        "number": 50,
+        "title": "Focused issue",
+        "state": "OPEN",
+        "url": "https://github.com/example/agent-skills/issues/50",
+        "projectItems": { "totalCount": 0, "nodes": [] },
+        "subIssues": { "totalCount": 0, "nodes": [] },
+        "parent": {
+          "number": 49,
+          "title": "Open parent",
+          "state": "OPEN",
+          "url": "https://github.com/example/agent-skills/issues/49",
+          "projectItems": {
+            "totalCount": 1,
+            "nodes": [
+              {
+                "id": "PVTI_parent",
+                "project": {
+                  "id": "PVT_test",
+                  "number": 2,
+                  "title": "Personal Development",
+                  "owner": { "login": "example" },
+                  "fields": {
+                    "totalCount": 1,
+                    "nodes": [
+                      {
+                        "id": "status-field",
+                        "name": "Status",
+                        "options": [
+                          { "id": "todo", "name": "Todo" },
+                          { "id": "progress", "name": "In Progress" },
+                          { "id": "done", "name": "Done" }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "fieldValues": {
+                  "totalCount": 1,
+                  "nodes": [
+                    {
+                      "name": "Todo",
+                      "optionId": "todo",
+                      "field": { "id": "status-field", "name": "Status" }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "parent": {
+            "number": 48,
+            "title": "Closed ancestor",
+            "state": "CLOSED",
+            "url": "https://github.com/example/agent-skills/issues/48",
+            "projectItems": {
+              "totalCount": 1,
+              "nodes": [
+                {
+                  "id": "PVTI_closed",
+                  "project": {
+                    "id": "PVT_test",
+                    "number": 2,
+                    "title": "Personal Development",
+                    "owner": { "login": "example" },
+                    "fields": {
+                      "totalCount": 1,
+                      "nodes": [
+                        {
+                          "id": "status-field",
+                          "name": "Status",
+                          "options": [
+                            { "id": "todo", "name": "Todo" },
+                            { "id": "progress", "name": "In Progress" },
+                            { "id": "done", "name": "Done" }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "totalCount": 1,
+                    "nodes": [
+                      {
+                        "name": "Todo",
+                        "optionId": "todo",
+                        "field": { "id": "status-field", "name": "Status" }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "parent": null
+          }
+        }
+      }
+    }
+  }
+}
