@@ -1,0 +1,18 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "openPullRequests": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 91,
+            "headRefName": "feat/open-pr",
+            "url": "https://github.com/example/agent-skills/pull/91"
+          }
+        ]
+      }
+    }
+  }
+}
