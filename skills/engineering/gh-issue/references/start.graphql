@@ -5,28 +5,12 @@ query($owner: String!, $name: String!, $number: Int!) {
       name
     }
     issue(number: $number) {
-      number
-      title
-      state
-      url
-      labels(first: 20) {
-        nodes {
-          name
-        }
-      }
+      ...StartIssue
       subIssues {
         totalCount
       }
       parent {
-        number
-        title
-        state
-        url
-        labels(first: 20) {
-          nodes {
-            name
-          }
-        }
+        ...StartIssue
         subIssues(first: 100) {
           totalCount
           nodes {
@@ -34,65 +18,17 @@ query($owner: String!, $name: String!, $number: Int!) {
           }
         }
         parent {
-          number
-          title
-          state
-          url
-          labels(first: 20) {
-            nodes {
-              name
-            }
-          }
+          ...StartIssue
           parent {
-            number
-            title
-            state
-            url
-            labels(first: 20) {
-              nodes {
-                name
-              }
-            }
+            ...StartIssue
             parent {
-              number
-              title
-              state
-              url
-              labels(first: 20) {
-                nodes {
-                  name
-                }
-              }
+              ...StartIssue
               parent {
-                number
-                title
-                state
-                url
-                labels(first: 20) {
-                  nodes {
-                    name
-                  }
-                }
+                ...StartIssue
                 parent {
-                  number
-                  title
-                  state
-                  url
-                  labels(first: 20) {
-                    nodes {
-                      name
-                    }
-                  }
+                  ...StartIssue
                   parent {
-                    number
-                    title
-                    state
-                    url
-                    labels(first: 20) {
-                      nodes {
-                        name
-                      }
-                    }
+                    ...StartIssue
                     parent {
                       number
                     }
@@ -101,6 +37,29 @@ query($owner: String!, $name: String!, $number: Int!) {
               }
             }
           }
+        }
+      }
+    }
+  }
+}
+
+fragment StartIssue on Issue {
+  number
+  title
+  state
+  url
+  labels(first: 20) {
+    nodes {
+      name
+    }
+  }
+  linkedBranches(first: 10) {
+    totalCount
+    nodes {
+      ref {
+        name
+        repository {
+          nameWithOwner
         }
       }
     }

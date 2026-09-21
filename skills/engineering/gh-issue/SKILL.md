@@ -9,10 +9,10 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use the checked-in query wrapper for GitHub reads. Use `git` and the selected
-worktree manager directly when start requires local setup. Keep each path
-bounded: do not recursively fetch every descendant, search the full pull-request
-inventory, or inspect unrelated branches and worktrees.
+Use the checked-in query wrapper for GitHub reads. Use `gh`, `git`, and the
+selected worktree manager directly when start requires GitHub or local setup.
+Keep each path bounded: do not recursively fetch every descendant, search the
+full pull-request inventory, or inspect unrelated branches and worktrees.
 
 The current implementation supports `status`, `start`, and `finish`. It does
 not support `clean`. Explain this boundary. Do not approximate an unavailable
@@ -47,6 +47,18 @@ Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
+Read the optional global configuration in the same tool call as the status
+wrapper. When `repositories[OWNER/REPOSITORY].projectStatus.enabled` is `true`,
+run the optional Project query in that call:
+
+```text
+<skill-directory>/scripts/query.sh project-status OWNER/REPOSITORY NUMBER
+```
+
+Repositories without that setting make no Project request. A Project query
+failure does not erase the ordinary status result. Report the unavailable
+Project status and its error.
+
 If no issue number is supplied, list at most ten recent open issues authored by
 the user and ten assigned to the user with `gh issue list`. Deduplicate them,
 then present the candidates with the harness's native selection control. Use a
@@ -60,10 +72,12 @@ repeat the same query for that child only until the recommendation reaches a
 standalone issue. Do not inspect sibling descendants.
 
 Render the issue state, classification, parent, direct-child progress, active
-blockers, recommendation, recommendation reason, and next mechanical action.
-Status is read-only. A recommendation is never permission to start that issue.
-If GitHub returns no issue or truncates a relationship, report that limit. Do
-not invent a complete status or recommendation from partial data.
+blockers, linked branches, configured Project status, recommendation,
+recommendation reason, and next mechanical action. A non-null linked branch or
+configured start value is GitHub-visible started evidence. Status is
+read-only. A recommendation is never permission to start that issue. If GitHub
+returns no issue or truncates a relationship, report that limit. Do not invent
+a complete status or recommendation from partial data.
 
 </important>
 
@@ -92,6 +106,15 @@ Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
+When `repositories[OWNER/REPOSITORY].projectStatus.enabled` is `true`, run
+`query.sh project-status` for the same issue in this initial tool call. Also
+check that GitHub CLI authentication has `read:project` and `project` scopes.
+The optional object uses `field` and `startOption`, with `Status` and `In
+Progress` as defaults. Repositories without the enabled setting make no Project
+request. A missing scope, truncated Project result, or missing or duplicated
+configured field or option stops start before any mutation. Report one clear
+corrective action.
+
 Run the wrapper and the compact read-only local inspection in one tool call.
 Do not resolve the origin in a separate call. In that same call, read
 `~/.config/agent-skills/config.json` when it exists, resolve the primary checkout
@@ -108,19 +131,29 @@ Do not emit unrelated refs, Supacode repository IDs, or per-worktree metadata.
 Keep the compact worktree branches because sibling patterns can identify a
 shared integration branch.
 
-The canonical configuration settings are top-level. Apply configured manager,
-root, or branch templates. Explicit user and loaded repository instructions
-take precedence. Do not list or reread the skill files.
+Shared configuration settings are top-level. Project settings live under the
+exact repository entry. Apply configured manager, root, or branch templates.
+Explicit user and loaded repository instructions take precedence. Do not list
+or reread the skill files.
 
 Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
-Use only the data from the combined query and local inspection. Do not add a
-separate parsing or discovery command.
+Also reject a truncated linked-branch result. Use only the data from the
+combined query and local inspection. Do not add a separate parsing or discovery
+command.
 
-Treat a unique branch or worktree with a bounded issue marker such as `-83-` as
-existing issue work, regardless of its naming prefix. If the issue already has
-a matching worktree, report it and stop. Do not inspect its commits, pull
-requests, checks, or relation to the base branch. Those checks belong to local
-implementation status and finish.
+Treat a non-null linked branch or a unique local branch or worktree with a
+bounded issue marker such as `-83-` as existing issue work, regardless of its
+naming prefix. If the issue already has a matching worktree, update stale
+configured Project status, report the worktree, and stop. If the issue has one
+linked remote branch without a worktree, an explicit start reports that the
+issue is already started and stops. An explicit resume attaches that branch
+through the configured manager. Do not create a second branch. Do not inspect
+commits, pull requests, checks, or relation to the base branch. Those checks
+belong to local implementation status and finish.
+
+When a configured Project already has its start value but no linked or local
+issue branch exists, report possible work by another contributor and stop. Do
+not create duplicate work from local absence alone.
 
 For missing issue work, prefer an explicit configured or repository policy.
 Otherwise, infer a shared integration branch only when one candidate is
@@ -137,36 +170,55 @@ them and ask one question. For an explicit start with no existing pattern, show
 the generic per-compound integration plan and create it without another
 confirmation.
 
-If worktree creation remains necessary, fetch once. Stop if the destination
-belongs to another branch or the required base worktree is dirty. Use the
-configured manager. In `auto` mode, prefer Supacode when the primary repository
-is registered. Create a new Supacode worktree with:
+If configured Project items need an update, make those edits first in the
+mutation call. Update the focused issue and every ancestor in its start plan.
+Use each exact Project match returned by the optional query:
 
 ```text
-supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base BASE --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
+gh project item-edit PROJECT_NUMBER --owner PROJECT_OWNER --url ISSUE_URL --field FIELD --value START_OPTION
 ```
 
-Capture the returned worktree ID. Use `git worktree add` only when the selected
-manager is `git` or Supacode is unavailable in `auto` mode. Push each new
-integration branch to `origin`. Leave the task branch local until finish.
-Verify the checked-out branch, report the worktree path, and stop.
+Stop on an update failure before branch creation.
+
+Create every missing issue branch as a GitHub-linked remote branch from its
+resolved base. This applies to compound integration branches and standalone task
+branches:
+
+```text
+gh issue develop NUMBER --repo OWNER/REPOSITORY --base BASE --name BRANCH
+```
+
+Then fetch once and create the worktree from `origin/BRANCH`. Stop if the
+destination belongs to another branch or a required base worktree is dirty. Use
+the configured manager. In `auto` mode, prefer Supacode when the primary
+repository is registered. Create a Supacode worktree with:
+
+```text
+supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base origin/BRANCH --upstream origin/BRANCH --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
+```
+
+Capture the returned worktree ID. Use `git worktree add -b BRANCH --track
+DESTINATION origin/BRANCH` only when the selected manager is `git` or Supacode
+is unavailable in `auto` mode. Every new task and integration branch is remote
+and linked from start. Verify the checked-out branch, report the linked branch
+and worktree path, and stop.
 
 For an existing local branch, omit `--base` from the Supacode command. For an
 existing remote branch, use `--base origin/BRANCH --upstream origin/BRANCH`.
 The native Git equivalents are:
 
 ```text
-git -C PRIMARY worktree add -b BRANCH DESTINATION BASE
 git -C PRIMARY worktree add DESTINATION BRANCH
 git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
 ```
 
-Treat this as a round-trip budget. Resolve existing issue work in one tool call
-that combines the query and local inspection. New work may use one additional
-call that batches fetch, creation, any integration-branch push, and verification.
-If the first call does not resolve the base branch, branch name, destination, or
-manager, show the unresolved value and ask one question. Do not investigate or
-spend extra calls to improve confidence.
+Treat this as a round-trip budget. Resolve issue work in one tool call that
+combines the query and local inspection. Any required Project synchronization or
+new work may use one additional call that batches Project updates, linked-branch
+creation, fetch, worktree creation, and verification. If the first call does not
+resolve the base branch, branch name, destination, or manager, show the
+unresolved value and ask one question. Do not investigate or spend extra calls
+to improve confidence.
 
 </important>
 
@@ -270,9 +322,11 @@ ordinary status.
 
 <important if="the workflow recommends another issue">
 
-Prefer an already-started unfinished standalone issue. Otherwise recommend the
-first open, unblocked standalone issue in GitHub hierarchy order, descending
-through compound issues as needed. Explain the evidence and wait for the user
-to choose or override it.
+Prefer an unfinished standalone issue with matching linked or local work.
+Project status without branch evidence can represent another contributor's
+work, so exclude that issue from recommendations. Otherwise recommend the first
+open, unblocked standalone issue in GitHub hierarchy order, descending through
+compound issues as needed. Explain the evidence and wait for the user to choose
+or override it.
 
 </important>

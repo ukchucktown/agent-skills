@@ -1,0 +1,90 @@
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    issue(number: $number) {
+      ...ProjectIssue
+      subIssues(first: 100) {
+        totalCount
+        nodes {
+          ...ProjectIssue
+        }
+      }
+      parent {
+        ...ProjectIssue
+        parent {
+          ...ProjectIssue
+          parent {
+            ...ProjectIssue
+            parent {
+              ...ProjectIssue
+              parent {
+                ...ProjectIssue
+                parent {
+                  ...ProjectIssue
+                  parent {
+                    ...ProjectIssue
+                    parent {
+                      number
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment ProjectIssue on Issue {
+  number
+  url
+  projectItems(first: 10) {
+    totalCount
+    nodes {
+      id
+      project {
+        id
+        number
+        title
+        owner {
+          ... on Organization {
+            login
+          }
+          ... on User {
+            login
+          }
+        }
+        fields(first: 50) {
+          totalCount
+          nodes {
+            ... on ProjectV2SingleSelectField {
+              id
+              name
+              options {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+      fieldValues(first: 50) {
+        totalCount
+        nodes {
+          ... on ProjectV2ItemFieldSingleSelectValue {
+            name
+            optionId
+            field {
+              ... on ProjectV2SingleSelectField {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
