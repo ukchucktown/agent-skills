@@ -1,0 +1,53 @@
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    defaultBranchRef {
+      name
+    }
+    issue(number: $number) {
+      ...IssueSummary
+      subIssues(first: 100) {
+        totalCount
+        nodes {
+          ...IssueSummary
+        }
+      }
+      parent {
+        ...IssueSummary
+        parent {
+          ...IssueSummary
+          parent {
+            ...IssueSummary
+            parent {
+              ...IssueSummary
+              parent {
+                ...IssueSummary
+                parent {
+                  ...IssueSummary
+                  parent {
+                    ...IssueSummary
+                    parent {
+                      number
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment IssueSummary on Issue {
+  number
+  title
+  state
+  url
+  labels(first: 20) {
+    nodes {
+      name
+    }
+  }
+}

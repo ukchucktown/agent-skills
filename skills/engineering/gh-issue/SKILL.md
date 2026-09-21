@@ -14,8 +14,8 @@ worktree manager directly when start requires local setup. Keep each path
 bounded: do not recursively fetch every descendant, search the full pull-request
 inventory, or inspect unrelated branches and worktrees.
 
-The current implementation supports `status` and `start`. It does not support
-`finish` or `clean`. Explain this boundary. Do not approximate an unavailable
+The current implementation supports `status`, `start`, and `finish`. It does
+not support `clean`. Explain this boundary. Do not approximate an unavailable
 command with shell calls.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
@@ -24,8 +24,9 @@ Map only clear start, resume, status, finish, prepare-PR, clean, or clean-up
 intent to this skill. A bare issue reference or a request to discuss, create,
 review, close, prioritize, or merge an issue is outside this workflow.
 
-Treat `start issue NUMBER`, `issue start NUMBER`, `GitHub issue NUMBER start`,
-and equivalent unambiguous imperatives as explicit authorization. An explicit
+Treat `start issue NUMBER`, `finish issue NUMBER`, `issue start NUMBER`, `issue
+finish NUMBER`, `GitHub issue NUMBER start`, `GitHub issue NUMBER finish`, and
+equivalent unambiguous imperatives as explicit authorization. An explicit
 `gh-issue` command is also authorization. If you must infer the issue or
 intended action, show the resolved issue and dry-run plan. Then request
 confirmation before mutation.
@@ -164,12 +165,76 @@ spend extra calls to improve confidence.
 
 <important if="the user asks to finish an issue or prepare its PR">
 
-Review the change set, run required checks, commit intended changes, push the
-branch, and create or update the correctly targeted ready-for-review PR. Return
-the PR unmerged. A compound issue cannot finish while a direct child remains
-open or has an unmerged PR targeting its integration branch.
+Treat an explicit issue number as authorization to review, validate, commit,
+push, and prepare its PR. Finish always returns a ready-for-review PR unmerged.
 
-This command is unavailable until its deterministic script is implemented.
+Run the query wrapper without opening, listing, or reconstructing it:
+
+```text
+<skill-directory>/scripts/query.sh finish OWNER/REPOSITORY NUMBER
+```
+
+Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
+The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
+directly. Do not add a parsing command.
+
+Run the wrapper and bounded local inspection in one tool call. In that call,
+read the optional global configuration and resolve the primary checkout from
+Git's common directory. Output the current branch, short status, worktree list,
+and local and remote refs that contain the bounded issue number.
+
+Prefer the current worktree when its branch has that issue marker. Otherwise,
+use one matching worktree and branch. Ask one question when the match is missing
+or not unique. End the inquiry there.
+
+Reject a missing or closed issue, a truncated hierarchy, or a direct-child
+result whose node count differs from `totalCount`. A compound issue also stops
+when a direct child is open.
+
+Use one batched read-only tool call after you resolve the branch. Query pull
+requests for that exact head branch. For a compound issue, also query open pull
+requests that target its integration branch. Any result identifies unfinished
+child delivery work and stops finish. Limit each result to two. Reuse these
+results through the rest of finish.
+
+```text
+gh pr list --repo OWNER/REPOSITORY --head BRANCH --state all --limit 2 --json number,title,state,isDraft,url,baseRefName,headRefName
+gh pr list --repo OWNER/REPOSITORY --base BRANCH --state open --limit 2 --json number,title,state,isDraft,url,baseRefName,headRefName
+```
+
+Run the second command only for a compound issue.
+
+Resolve the PR base from the first available source:
+
+1. An existing PR for the exact head branch.
+2. Explicit user or loaded repository instructions.
+3. One integration branch supported by the hierarchy and bounded local
+   evidence.
+4. The GitHub default branch when the issue has no parent.
+
+Collect unresolved values into one question and stop. Do not inspect unrelated
+branches or pull requests.
+
+Review every changed path and the complete diff in the selected worktree.
+Separate intended issue work from unrelated changes. Use the validation commands
+named by loaded repository instructions or its immediately visible root task
+configuration. If the intended changes or required validation are ambiguous,
+ask one question and stop. Run the required checks and stop on failure.
+
+Commit only the intended paths. Use a scoped message that includes the issue
+number, then push the selected branch with its upstream.
+
+Reuse the single open PR returned by the exact-head lookup. A closed unmerged PR
+or multiple matches is ambiguous. A merged PR means that the work is already
+delivered. Report it and stop. Otherwise, create a ready-for-review PR. Set the
+resolved base, summarize the delivered behavior and validation, and end the body
+with `Closes #NUMBER`. Update an existing PR when those values differ. Mark it
+ready when it is a draft.
+
+Treat finish as a round-trip budget. Use the initial combined query and local
+inspection, one batched read for the exact PR and any compound base lookup, the
+repository's validation, and the required mutations. Ambiguity produces one
+question and no further tool calls. Never merge the PR.
 
 </important>
 
