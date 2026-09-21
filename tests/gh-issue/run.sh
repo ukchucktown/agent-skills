@@ -275,4 +275,6 @@ printf '%s\n' "$legacy_output" | grep -F 'Project items added: 0' >/dev/null
 printf '%s\n' "$legacy_output" | grep -F 'Project statuses updated: 0' >/dev/null
 [ ! -s "$call_log" ]
 
+"$repository_root/tests/gh-issue/clean.sh"
+
 printf 'gh-issue deterministic command tests passed\n'

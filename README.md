@@ -10,8 +10,8 @@ Current work:
 
 - `skills/engineering/gh-issue` — lightweight GitHub issue mechanics with a
   bounded status query, direct issue worktree setup, unmerged pull-request
-  preparation, and completed no-change handoff through standard tools. `clean`
-  remains intentionally unavailable until its implementation is reviewed.
+  preparation, completed no-change handoff, and guarded cleanup for merged
+  issue efforts.
 
 Install a selected skill with the standard Agent Skills CLI:
 

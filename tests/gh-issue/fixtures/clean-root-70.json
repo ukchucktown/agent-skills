@@ -1,0 +1,15 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "issue": {
+        "number": 70,
+        "title": "Local-only effort",
+        "state": "CLOSED",
+        "url": "https://github.com/example/agent-skills/issues/70",
+        "parent": null
+      }
+    }
+  }
+}

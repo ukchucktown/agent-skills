@@ -15,9 +15,7 @@ selected worktree manager directly when start requires GitHub or local setup.
 Keep each path bounded: do not recursively fetch every descendant, search the
 full pull-request inventory, or inspect unrelated branches and worktrees.
 
-The current implementation supports `status`, `start`, and `finish`. It does
-not support `clean`. Explain this boundary. Do not approximate an unavailable
-command with shell calls.
+The current implementation supports `status`, `start`, `finish`, and `clean`.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
@@ -238,12 +236,35 @@ draft. Never merge the pull request.
 
 <important if="the user asks to clean an issue">
 
-Confirm that the top compound effort reached the stable branch. Show every
-local and remote worktree or branch that the command will remove. Request
-confirmation immediately before deletion. Preserve dirty, protected, active,
-open-PR, or unmerged state. `--local-only` preserves remote branches.
+Run the clean command from the repository's primary checkout on its stable
+branch:
 
-This command is unavailable until its deterministic script is implemented.
+```text
+<skill-directory>/scripts/clean.sh OWNER/REPOSITORY NUMBER
+```
+
+Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
+Pass `--local-only` before the repository when the user wants to preserve
+remote branches. The command resolves the top-level effort, verifies its issue
+tree and branch state, and prints the complete cleanup plan. Planning is
+read-only and creates no saved plan file.
+
+Relay the plan without reconstructing it. The command preserves dirty or
+unavailable worktrees, the active checkout, protected branches, branches with
+open pull requests, divergent local and remote tips, and work that cannot be
+verified in the stable branch. Stop when nothing is eligible.
+
+Request confirmation immediately before deletion. After confirmation, apply
+only the displayed plan with its exact token:
+
+```text
+<skill-directory>/scripts/clean.sh --confirm TOKEN OWNER/REPOSITORY NUMBER
+```
+
+Keep `--local-only` on the confirmed command when it appeared on the plan. If
+the command rejects a stale token, relay the new plan and request confirmation
+again. Do not delete a preserved item manually and do not approximate cleanup
+with separate Git, GitHub, filesystem, or Supacode commands.
 
 </important>
 

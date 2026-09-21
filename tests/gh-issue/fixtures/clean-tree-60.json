@@ -1,0 +1,147 @@
+{
+  "data": {
+    "repository": {
+      "nameWithOwner": "example/agent-skills",
+      "defaultBranchRef": { "name": "main" },
+      "openPullRequests": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "headRefName": "feat/issue-64-open-pr",
+            "url": "https://github.com/example/agent-skills/pull/64"
+          }
+        ]
+      },
+      "issue": {
+        "number": 60,
+        "title": "Completed effort",
+        "state": "CLOSED",
+        "url": "https://github.com/example/agent-skills/issues/60",
+        "linkedBranches": {
+          "totalCount": 1,
+          "nodes": [
+            {
+              "ref": {
+                "name": "feat/issue-60-root",
+                "repository": { "nameWithOwner": "example/agent-skills" }
+              }
+            }
+          ]
+        },
+        "subIssues": {
+          "totalCount": 6,
+          "nodes": [
+            {
+              "number": 61,
+              "title": "Merged child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/61",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-61-child",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            },
+            {
+              "number": 62,
+              "title": "Dirty child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/62",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-62-dirty",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            },
+            {
+              "number": 63,
+              "title": "Unmerged child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/63",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-63-unmerged",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            },
+            {
+              "number": 64,
+              "title": "Open pull request child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/64",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-64-open-pr",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            },
+            {
+              "number": 65,
+              "title": "Protected child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/65",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-65-protected",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            },
+            {
+              "number": 66,
+              "title": "Active child",
+              "state": "CLOSED",
+              "url": "https://github.com/example/agent-skills/issues/66",
+              "linkedBranches": {
+                "totalCount": 1,
+                "nodes": [
+                  {
+                    "ref": {
+                      "name": "feat/issue-66-active",
+                      "repository": { "nameWithOwner": "example/agent-skills" }
+                    }
+                  }
+                ]
+              },
+              "subIssues": { "totalCount": 0, "nodes": [] }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
