@@ -33,6 +33,9 @@ query($owner: String!, $name: String!, $number: Int!) {
           url
         }
       }
+      linkedBranches(first: 10) {
+        ...IssueBranches
+      }
       subIssues(first: 100) {
         totalCount
         nodes {
@@ -52,7 +55,22 @@ query($owner: String!, $name: String!, $number: Int!) {
               url
             }
           }
+          linkedBranches(first: 10) {
+            ...IssueBranches
+          }
         }
+      }
+    }
+  }
+}
+
+fragment IssueBranches on LinkedBranchConnection {
+  totalCount
+  nodes {
+    ref {
+      name
+      repository {
+        nameWithOwner
       }
     }
   }
