@@ -4,9 +4,42 @@ set -eu
 command_name=${GH_ISSUE_COMMAND:-clean.sh}
 
 usage() {
-  echo "usage: $command_name [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  if [ "$command_name" = "clean.sh" ]; then
+    echo "usage: clean.sh [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+    echo "       clean.sh [--local-only] [--select BRANCH]... [--confirm TOKEN] OWNER/REPOSITORY|." >&2
+  else
+    echo "usage: $command_name [--local-only] [--confirm TOKEN] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  fi
   exit 64
 }
+
+if [ "$command_name" = "clean.sh" ]; then
+  positional_count=0
+  expect_value=false
+  after_options=false
+  for argument in "$@"; do
+    if [ "$expect_value" = "true" ]; then
+      expect_value=false
+      continue
+    fi
+    if [ "$after_options" = "true" ]; then
+      positional_count=$((positional_count + 1))
+      continue
+    fi
+    case "$argument" in
+      --confirm|--select) expect_value=true ;;
+      --local-only|--cancel) ;;
+      --) after_options=true ;;
+      -*) ;;
+      *) positional_count=$((positional_count + 1)) ;;
+    esac
+  done
+  [ "$expect_value" = "false" ] || usage
+  if [ "$positional_count" -eq 1 ]; then
+    script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    exec "$script_directory/clean-repository.sh" "$@"
+  fi
+fi
 
 operation=clean
 local_only=false

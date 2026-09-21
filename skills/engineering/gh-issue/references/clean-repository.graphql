@@ -1,0 +1,16 @@
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    defaultBranchRef {
+      name
+    }
+    openPullRequests: pullRequests(states: OPEN, first: 100) {
+      totalCount
+      nodes {
+        number
+        headRefName
+        url
+      }
+    }
+  }
+}

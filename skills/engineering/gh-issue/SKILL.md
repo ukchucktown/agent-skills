@@ -1,6 +1,6 @@
 ---
 name: gh-issue
-description: Manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, clean completed work, or cancel abandoned work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
+description: Manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, clean completed or residual work, or cancel abandoned work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
 ---
 
 # GitHub issue workflow
@@ -69,6 +69,52 @@ Keep `--local-only` on the confirmed command when it appeared on the plan. If
 the command rejects a stale token, relay the new plan and request confirmation
 again. Do not close, delete, or preserve individual artifacts with separate
 Git, GitHub, filesystem, or Supacode commands.
+
+</important>
+
+<important if="the user asks to clean repository artifacts without an issue number">
+
+Run repository cleanup discovery from the primary checkout on its stable
+branch:
+
+```text
+<skill-directory>/scripts/clean.sh OWNER/REPOSITORY
+```
+
+Pass `.` when the current checkout is the target. The command returns
+non-primary worktrees as branch groups and separates selectable groups from
+blocked groups. Discovery is read-only. Relay the candidates without adding
+branches from another search.
+
+Ask the user to select one or more selectable groups. Use the harness's native
+multiple-selection control when it can represent every candidate. Otherwise,
+show a numbered list and accept numbers or exact branch names. Selection is
+permission to build the plan, not permission to delete.
+
+Build one combined plan by repeating `--select` for the chosen branches:
+
+```text
+<skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] OWNER/REPOSITORY
+```
+
+Pass `--local-only` before the selections only when the user wants to preserve
+remote branches. Relay the plan without reconstructing it. Repository cleanup
+may discard dirty, divergent, unmerged, or Supacode-active selected work and
+shows those conditions as warnings. It keeps the primary checkout, default and
+protected branches, branches with open pull requests, unavailable worktrees,
+branches shared by multiple worktrees, and every unselected group.
+
+Request one confirmation immediately before deletion. Apply the same selection
+and mode with the exact displayed token:
+
+```text
+<skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] --confirm TOKEN OWNER/REPOSITORY
+```
+
+If the command rejects a stale token, relay the new plan and request
+confirmation again. Repository cleanup changes no issue or pull-request state.
+Use issue cancellation when the requested action includes closing work as `Not
+planned`.
 
 </important>
 
