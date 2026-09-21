@@ -356,17 +356,29 @@ if [ -z "$selected_branches" ]; then
     printf 'Repository cleanup candidates\n'
     printf 'Repository: %s\n' "$canonical_repository"
     printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
-    printf 'Selectable groups: %s\n' "$selectable_count"
+    printf '\nSelectable branches (%s)\n\n' "$selectable_count"
     awk -F '\t' '{
       local = ($4 == "" ? "absent" : $4)
       remote = ($5 == "" ? "absent" : $5)
       warning = ($6 == "" ? "none" : $6)
-      location = ($2 == "(no worktree)" ? "no worktree" : $2 " | via " $3)
-      printf "%d. %s | %s | local %s | remote %s | warnings: %s\n", NR, $1, location, local, remote, warning
+      worktree = ($2 == "(no worktree)" ? "none" : $2 " (" $3 ")")
+      if (local != "absent" && remote != "absent" && local == remote) {
+        refs = "local and remote at " local
+      } else if (local != "absent" && remote != "absent") {
+        refs = "local at " local "; remote at " remote
+      } else if (local != "absent") {
+        refs = "local only at " local
+      } else {
+        refs = "remote only at " remote
+      }
+      printf "%d. %s\n   Worktree: %s\n   References: %s\n   Warnings: %s\n\n", NR, $1, worktree, refs, warning
     }' "$candidates"
-    printf 'Blocked groups: %s\n' "$blocked_count"
-    awk -F '\t' '{ printf "- %s | %s | %s\n", $1, $2, $3 }' "$blocked"
-    printf 'No changes were made. Choose all selectable groups, comma-separated numbers or ranges, or exact branch names to build a cleanup plan.\n'
+    printf 'Blocked branches (%s)\n\n' "$blocked_count"
+    awk -F '\t' '{
+      worktree = ($2 == "(no worktree)" ? "none" : $2)
+      printf "- %s\n  Worktree: %s\n  Reason: %s\n\n", $1, worktree, $3
+    }' "$blocked"
+    printf 'No changes were made. Choose all selectable branches, comma-separated numbers or ranges, or exact branch names to build a cleanup plan.\n'
   })
   printf '%s\n' "$candidate_output"
   exit 0
@@ -431,19 +443,57 @@ render_detailed_plan() {
   printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
   printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
   printf 'Risk policy: %s\n' "$([ "$force" = "true" ] && printf 'force' || printf 'safe only')"
-  printf 'Selected groups: %s\n' "$selected_count"
-  awk '{ printf "- %s\n", $0 }' "$selected"
-  printf 'Worktrees to remove: %s\n' "$worktree_count"
-  awk -F '\t' '{ printf "- %s [%s] via %s\n", $1, $2, $3 }' "$remove_worktrees"
-  printf 'Local branches to remove: %s\n' "$local_count"
-  awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_local"
-  printf 'Remote branches to remove: %s\n' "$remote_count"
-  awk -F '\t' '{ printf "- %s at %s\n", $1, $2 }' "$remove_remote"
-  printf 'Warnings: %s\n' "$warning_count"
-  awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$warnings"
-  printf 'Preserved: %s\n' "$preserved_count"
-  awk -F '\t' '{ printf "- %s: %s\n", $1, $2 }' "$preserved"
-  printf 'Unselected selectable groups: %s\n' "$unselected_count"
+  printf '\nSelected branches (%s)\n\n' "$selected_count"
+  branch_index=0
+  while IFS= read -r branch; do
+    [ -n "$branch" ] || continue
+    branch_index=$((branch_index + 1))
+    candidate=$(awk -F '\t' -v branch="$branch" '$1 == branch { print; exit }' "$candidates")
+    worktree_path=$(printf '%s\n' "$candidate" | cut -f2)
+    manager=$(printf '%s\n' "$candidate" | cut -f3)
+    local_oid=$(printf '%s\n' "$candidate" | cut -f4)
+    remote_oid=$(printf '%s\n' "$candidate" | cut -f5)
+    warning=$(printf '%s\n' "$candidate" | cut -f6-)
+
+    if [ "$worktree_path" = "(no worktree)" ]; then
+      worktree_detail=none
+    else
+      worktree_detail="$worktree_path ($manager; remove)"
+    fi
+
+    if [ -n "$local_oid" ] && [ -n "$remote_oid" ] && [ "$local_oid" = "$remote_oid" ]; then
+      if [ "$local_only" = "true" ]; then
+        reference_detail="local at $local_oid (remove); remote at $remote_oid (preserve)"
+      else
+        reference_detail="local and remote at $local_oid (remove both)"
+      fi
+    elif [ -n "$local_oid" ] && [ -n "$remote_oid" ]; then
+      if [ "$local_only" = "true" ]; then
+        reference_detail="local at $local_oid (remove); remote at $remote_oid (preserve)"
+      else
+        reference_detail="local at $local_oid (remove); remote at $remote_oid (remove)"
+      fi
+    elif [ -n "$local_oid" ]; then
+      reference_detail="local only at $local_oid (remove)"
+    elif [ "$local_only" = "true" ]; then
+      reference_detail="remote only at $remote_oid (preserve)"
+    else
+      reference_detail="remote only at $remote_oid (remove)"
+    fi
+
+    printf '%s. %s\n' "$branch_index" "$branch"
+    printf '   Worktree: %s\n' "$worktree_detail"
+    printf '   References: %s\n' "$reference_detail"
+    printf '   Warnings: %s\n\n' "${warning:-none}"
+  done <"$selected"
+  printf 'Totals\n'
+  printf '  Selected branches: %s\n' "$selected_count"
+  printf '  Worktrees to remove: %s\n' "$worktree_count"
+  printf '  Local branches to remove: %s\n' "$local_count"
+  printf '  Remote branches to remove: %s\n' "$remote_count"
+  printf '  Branches with warnings: %s\n' "$warning_count"
+  printf '  Preserved remote branches: %s\n' "$preserved_count"
+  printf '  Unselected selectable branches: %s\n' "$unselected_count"
 }
 
 plan_token=$({
@@ -479,17 +529,15 @@ fi
 }
 
 confirmation_summary=$({
-  printf 'Confirmed repository cleanup plan summary\n'
+  printf 'Confirmed repository cleanup\n'
   printf 'Repository: %s\n' "$canonical_repository"
   printf 'Mode: %s\n' "$([ "$local_only" = "true" ] && printf 'local only' || printf 'local and remote')"
   printf 'Risk policy: %s\n' "$([ "$force" = "true" ] && printf 'force' || printf 'safe only')"
-  printf 'Selected groups: %s\n' "$selected_count"
-  printf 'Worktrees to remove: %s\n' "$worktree_count"
-  printf 'Local branches to remove: %s\n' "$local_count"
-  printf 'Remote branches to remove: %s\n' "$remote_count"
-  printf 'Warnings: %s\n' "$warning_count"
-  printf 'Preserved: %s\n' "$preserved_count"
-  printf 'Unselected selectable groups: %s\n' "$unselected_count"
+  printf 'Remove: %s worktree(s), %s local branch(es), and %s remote branch(es) across %s selected branch(es).\n' \
+    "$worktree_count" "$local_count" "$remote_count" "$selected_count"
+  printf 'Branches with warnings: %s\n' "$warning_count"
+  printf 'Preserved remote branches: %s\n' "$preserved_count"
+  printf 'Unselected selectable branches: %s\n' "$unselected_count"
 })
 printf '%s\n' "$confirmation_summary"
 

@@ -102,8 +102,10 @@ Pass `.` when the current checkout is the target. The command returns numbered
 groups for non-stable local and remote branches, including branches whose
 worktrees are already gone. It groups matching local and remote branches by
 name, includes an attached worktree when present, and separates selectable
-groups from blocked groups. Discovery is read-only. Relay the complete result
-verbatim in one fenced `text` code block.
+groups from blocked groups. The rendered discovery and plan show each branch
+once, with its worktree, references, warnings, and planned actions nested under
+that branch. Discovery is read-only. Relay the complete result verbatim in one
+fenced `text` code block.
 
 The user-facing text block must contain the target repository, every selectable
 number with its branch name, and every blocked branch with its reason. Tool

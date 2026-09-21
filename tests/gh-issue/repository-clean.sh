@@ -227,43 +227,77 @@ run_clean() {
   "$clean_command" "$@"
 }
 
+assert_branch_once() {
+  output=$1
+  branch=$2
+  occurrences=$(printf '%s\n' "$output" | awk -v branch="$branch" '
+    index($0, branch) { count++ }
+    END { print count + 0 }
+  ')
+  if [ "$occurrences" -ne 1 ]; then
+    echo "expected $branch to appear once, found $occurrences occurrences" >&2
+    exit 1
+  fi
+}
+
 candidate_output=$(cd "$primary" && run_clean example/agent-skills)
 printf '%s\n' "$candidate_output" | grep -F 'Repository cleanup candidates' >/dev/null
-printf '%s\n' "$candidate_output" | grep -F 'Selectable groups: 5' >/dev/null
-printf '%s\n' "$candidate_output" | grep -F 'Blocked groups: 5' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Selectable branches (5)' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Blocked branches (5)' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'Choose all selectable groups, comma-separated numbers or ranges, or exact branch names' >/dev/null
+  'Choose all selectable branches, comma-separated numbers or ranges, or exact branch names' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'feat/leftover' | grep -F \
   'worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
 grep -F 'pr list --head feat/leftover' "$call_log" >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'feat/active' | grep -F \
   'worktree is active in Supacode; branch tip is not in main' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'feat/protected' | grep -F 'remote branch is protected' >/dev/null
+  'Reason: remote branch is protected' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'feat/open-pr' | grep -F 'open pull request' >/dev/null
+  'Reason: open pull request' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'feat/locked' | grep -F 'locked outside Supacode' >/dev/null
-for branch in feat/orphan-both feat/orphan-local feat/orphan-remote; do
-  printf '%s\n' "$candidate_output" | grep -F "$branch" | grep -F 'no worktree' >/dev/null
+  'Reason: worktree is locked outside Supacode' >/dev/null
+for branch in \
+  feat/leftover feat/active feat/protected feat/open-pr feat/locked \
+  feat/orphan-both feat/orphan-local feat/orphan-remote feat/unselected feat/squash-merged; do
+  assert_branch_once "$candidate_output" "$branch"
 done
-printf '%s\n' "$candidate_output" | grep -F 'feat/squash-merged' | grep -F 'warnings: none' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Worktree: none' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'References: local and remote at' >/dev/null
+printf '%s\n' "$candidate_output" | grep -F 'Warnings: none' >/dev/null
 grep -F 'pr list --head feat/squash-merged' "$call_log" >/dev/null
 [ -d "$leftover_worktree" ]
 [ -d "$active_worktree" ]
 
 all_plan_output=$(cd "$primary" && run_clean --all example/agent-skills)
 printf '%s\n' "$all_plan_output" | grep -F 'Risk policy: safe only' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Selected groups: 5' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Worktrees to remove: 2' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Local branches to remove: 4' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Remote branches to remove: 4' >/dev/null
-printf '%s\n' "$all_plan_output" | grep -F 'Unselected selectable groups: 0' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Selected branches (5)' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F 'Totals' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F '  Worktrees to remove: 2' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F '  Local branches to remove: 4' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F '  Remote branches to remove: 4' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F '  Unselected selectable branches: 0' >/dev/null
+printf '%s\n' "$all_plan_output" | grep -F \
+  'References: local and remote at' | grep -F '(remove both)' >/dev/null
 for branch in feat/unselected feat/orphan-both feat/orphan-local feat/orphan-remote feat/squash-merged; do
-  printf '%s\n' "$all_plan_output" | grep -F -- "- $branch" >/dev/null
+  assert_branch_once "$all_plan_output" "$branch"
 done
+if printf '%s\n' "$all_plan_output" | grep -Fx 'Local branches to remove:' >/dev/null; then
+  echo 'repository cleanup plan split local branches into a separate list' >&2
+  exit 1
+fi
+if printf '%s\n' "$all_plan_output" | grep -Fx 'Remote branches to remove:' >/dev/null; then
+  echo 'repository cleanup plan split remote branches into a separate list' >&2
+  exit 1
+fi
+
+local_only_plan=$(cd "$primary" && run_clean \
+  --local-only --select feat/unselected example/agent-skills)
+printf '%s\n' "$local_only_plan" | grep -F \
+  'References: local at ' | grep -F '(remove); remote at ' | grep -F '(preserve)' >/dev/null
+printf '%s\n' "$local_only_plan" | grep -F '  Local branches to remove: 1' >/dev/null
+printf '%s\n' "$local_only_plan" | grep -F '  Remote branches to remove: 0' >/dev/null
+printf '%s\n' "$local_only_plan" | grep -F '  Preserved remote branches: 1' >/dev/null
 if (cd "$primary" && run_clean --all --select feat/leftover example/agent-skills >/dev/null 2>&1); then
   echo 'repository cleanup accepted --all with --select' >&2
   exit 1
@@ -280,9 +314,9 @@ safe_token=$(printf '%s\n' "$all_plan_output" | awk '/^Confirmation token:/ { pr
 safe_apply_output=$(cd "$primary" && run_clean \
   --all --confirm "$safe_token" example/agent-skills)
 printf '%s\n' "$safe_apply_output" | grep -F \
-  'Confirmed repository cleanup plan summary' >/dev/null
+  'Confirmed repository cleanup' >/dev/null
 printf '%s\n' "$safe_apply_output" | grep -F \
-  'Selected groups: 5' >/dev/null
+  'Remove: 2 worktree(s), 4 local branch(es), and 4 remote branch(es) across 5 selected branch(es).' >/dev/null
 printf '%s\n' "$safe_apply_output" | grep -F \
   'Repository cleanup applied: 2 worktree(s), 4 local branch(es), 4 remote branch(es).' >/dev/null
 if printf '%s\n' "$safe_apply_output" | grep -F "$unselected_worktree" >/dev/null; then
@@ -350,16 +384,20 @@ if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/rac
 fi
 
 force_output=$(cd "$primary" && run_clean --force example/agent-skills)
-printf '%s\n' "$force_output" | grep -F 'Selectable groups: 2' >/dev/null
-printf '%s\n' "$force_output" | grep -F 'Blocked groups: 3' >/dev/null
-printf '%s\n' "$force_output" | grep -F 'feat/leftover' | grep -F \
-  'warnings: worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
-printf '%s\n' "$force_output" | grep -F 'feat/active' | grep -F \
-  'warnings: worktree is active in Supacode; branch tip is not in main' >/dev/null
+printf '%s\n' "$force_output" | grep -F 'Selectable branches (2)' >/dev/null
+printf '%s\n' "$force_output" | grep -F 'Blocked branches (3)' >/dev/null
+printf '%s\n' "$force_output" | grep -F \
+  'Warnings: worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
+printf '%s\n' "$force_output" | grep -F \
+  'Warnings: worktree is active in Supacode; branch tip is not in main' >/dev/null
+assert_branch_once "$force_output" feat/leftover
+assert_branch_once "$force_output" feat/active
 
 force_plan=$(cd "$primary" && run_clean --force --all example/agent-skills)
 printf '%s\n' "$force_plan" | grep -F 'Risk policy: force' >/dev/null
-printf '%s\n' "$force_plan" | grep -F 'Selected groups: 2' >/dev/null
+printf '%s\n' "$force_plan" | grep -F 'Selected branches (2)' >/dev/null
+assert_branch_once "$force_plan" feat/leftover
+assert_branch_once "$force_plan" feat/active
 force_token=$(printf '%s\n' "$force_plan" | awk '/^Confirmation token:/ { print $3 }')
 printf 'stale\n' >>"$leftover_worktree/leftover.txt"
 "$real_git" -C "$leftover_worktree" add leftover.txt
@@ -377,7 +415,7 @@ force_token=$(printf '%s\n' "$force_plan" | awk '/^Confirmation token:/ { print 
 force_apply_output=$(cd "$primary" && run_clean \
   --force --all --confirm "$force_token" example/agent-skills)
 printf '%s\n' "$force_apply_output" | grep -F \
-  'Confirmed repository cleanup plan summary' >/dev/null
+  'Confirmed repository cleanup' >/dev/null
 printf '%s\n' "$force_apply_output" | grep -F \
   'Risk policy: force' >/dev/null
 printf '%s\n' "$force_apply_output" | grep -F \
