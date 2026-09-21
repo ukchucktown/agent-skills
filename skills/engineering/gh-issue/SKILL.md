@@ -95,6 +95,13 @@ groups from blocked groups. Discovery is read-only. Relay the target repository
 and candidates without adding branches from another search or dropping their
 numbers.
 
+The user-facing response itself must contain the target repository, every
+selectable number with its branch name, and every blocked branch with its
+reason. Tool output does not satisfy this requirement because the harness may
+collapse or hide it. A compact numbered branch-name list is sufficient; paths,
+object IDs, and `warnings: none` may be omitted. Never replace the list with
+counts or a representative sample, even when it is long.
+
 Ask the user to select one or more selectable groups. Use the harness's native
 control only when it supports simultaneous selection of every candidate and an
 explicit Select all action. A single-choice picker does not qualify. Otherwise,
