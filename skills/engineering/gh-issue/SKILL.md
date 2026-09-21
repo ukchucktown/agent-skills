@@ -126,9 +126,10 @@ Do not inspect pull requests, issue bodies, or unrelated branches to strengthen
 an inference.
 
 If the evidence identifies one shared integration branch and one task prefix,
-show them and proceed. If it identifies neither or several, show the candidates
-and ask one question. For a new effort with no existing evidence, show the
-generic per-compound integration plan and ask before you create it.
+show them and proceed. If it identifies several conflicting candidates, show
+them and ask one question. For an explicit start with no existing pattern, show
+the generic per-compound integration plan and create it without another
+confirmation.
 
 If worktree creation remains necessary, fetch once. Stop if the destination
 belongs to another branch or the required base worktree is dirty. Use the
