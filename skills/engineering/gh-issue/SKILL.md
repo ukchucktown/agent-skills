@@ -42,6 +42,7 @@ wrapper directly without opening, listing, or reconstructing it:
 <skill-directory>/scripts/query.sh status OWNER/REPOSITORY NUMBER
 ```
 
+Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
@@ -86,20 +87,27 @@ reconstructing it:
 <skill-directory>/scripts/query.sh start OWNER/REPOSITORY NUMBER
 ```
 
+Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
 directly. Do not add a parsing command.
 
-In the same tool call, read `~/.config/agent-skills/config.json` when it exists.
-The canonical settings are top-level. Apply configured manager, root, or branch
-templates. Explicit user and loaded repository instructions take precedence.
-Do not list or reread the skill files.
+Run the wrapper and the complete read-only local inspection in one tool call.
+Do not resolve the origin in a separate call. In that same call, read
+`~/.config/agent-skills/config.json` when it exists, resolve the primary checkout
+from Git's common directory, and output:
+
+- `git worktree list --porcelain`.
+- Local and remote refs that contain the bounded issue number.
+- The primary checkout's current branch and short status.
+- `supacode repo list` when Supacode is the selected or automatic manager.
+
+The canonical configuration settings are top-level. Apply configured manager,
+root, or branch templates. Explicit user and loaded repository instructions
+take precedence. Do not list or reread the skill files.
 
 Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
-Then make one batched local inspection. Resolve the primary checkout from Git's
-common directory. Inspect `git worktree list --porcelain`, only branch refs that
-contain the bounded issue number or match an issue or ancestor label, and the
-Supacode repository list. Use the returned JSON directly. Do not add a separate
-parsing command.
+Use only the data from the combined query and local inspection. Do not add a
+separate parsing or discovery command.
 
 Treat a unique branch or worktree with a bounded issue marker such as `-83-` as
 existing issue work, regardless of its naming prefix. If the issue already has
@@ -145,16 +153,12 @@ git -C PRIMARY worktree add DESTINATION BRANCH
 git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
 ```
 
-Before mutation, use no more than the one hierarchy query and one batched local
-inspection. If they do not resolve the base branch, branch name, destination,
-or manager, show the unresolved value and ask one question. Do not continue
-investigating.
-
-Treat this as a round-trip budget. Resolve existing issue work in at most two
-tool calls: configuration plus the hierarchy query, then the batched local
-inspection. New work may use one additional call that batches fetch, creation,
-any integration-branch push, and verification. Do not spend extra calls to
-improve confidence after the required evidence is sufficient.
+Treat this as a round-trip budget. Resolve existing issue work in one tool call
+that combines the query and local inspection. New work may use one additional
+call that batches fetch, creation, any integration-branch push, and verification.
+If the first call does not resolve the base branch, branch name, destination, or
+manager, show the unresolved value and ask one question. Do not investigate or
+spend extra calls to improve confidence.
 
 </important>
 
