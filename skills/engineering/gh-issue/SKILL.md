@@ -18,11 +18,16 @@ full pull-request inventory, or inspect unrelated branches and worktrees.
 The current implementation supports `status`, `start`, `finish`, `clean`, and
 `cancel`.
 
-Cleanup and cancellation commands emit discovery and detailed plans as one
-buffered block. A confirmed command prints a compact count summary before it
-applies the unchanged plan. Relay only that summary and the final result. Do
-not repeat the detailed branch and worktree lists. If a confirmation token is
-stale, the command prints the refreshed detailed plan for review.
+Cleanup and cancellation commands emit each discovery result and detailed plan
+as one buffered block. Put that complete output in one fenced `text` code block
+in the user-facing response. Preserve the text verbatim. Do not convert branch
+names to Markdown bullets, inline code, or another list. This format keeps the
+output in one copyable region and avoids per-branch Markdown pills.
+
+A confirmed command prints a compact count summary before it applies the
+unchanged plan. Relay only that summary and the final result as normal prose.
+Do not repeat the detailed branch and worktree lists. If a confirmation token
+is stale, put the refreshed detailed plan in one fenced `text` code block.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
@@ -97,16 +102,14 @@ Pass `.` when the current checkout is the target. The command returns numbered
 groups for non-stable local and remote branches, including branches whose
 worktrees are already gone. It groups matching local and remote branches by
 name, includes an attached worktree when present, and separates selectable
-groups from blocked groups. Discovery is read-only. Relay the target repository
-and candidates without adding branches from another search or dropping their
-numbers.
+groups from blocked groups. Discovery is read-only. Relay the complete result
+verbatim in one fenced `text` code block.
 
-The user-facing response itself must contain the target repository, every
-selectable number with its branch name, and every blocked branch with its
-reason. Tool output does not satisfy this requirement because the harness may
-collapse or hide it. A compact numbered branch-name list is sufficient; paths,
-object IDs, and `warnings: none` may be omitted. Never replace the list with
-counts or a representative sample, even when it is long.
+The user-facing text block must contain the target repository, every selectable
+number with its branch name, and every blocked branch with its reason. Tool
+output does not satisfy this requirement because the harness may collapse or
+hide it. Do not add branches from another search, omit command fields, or
+replace the result with counts or a representative sample.
 
 Ask the user to select one or more selectable groups. Use the harness's native
 control only when it supports simultaneous selection of every candidate and an

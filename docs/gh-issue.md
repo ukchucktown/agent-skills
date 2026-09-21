@@ -276,10 +276,14 @@ If repository state changes before confirmation, the token becomes stale. The
 skill creates a new plan and requests a new confirmation.
 
 The commands emit discovery results and detailed plans as one buffered block.
-This output prevents incremental terminal redraws. A valid confirmation prints
-only a compact count summary before the command applies the plan. The command
-does not repeat every branch and worktree. A stale confirmation still prints
-the complete refreshed plan for review.
+This command-level buffer prevents incremental terminal redraws. It does not
+control how a desktop client renders the assistant response. The skill puts
+each complete result in one fenced `text` code block. This format provides one
+copyable plain-text region and avoids per-branch Markdown pills.
+
+A valid confirmation prints only a compact count summary before the command
+applies the plan. The command does not repeat every branch and worktree. A
+stale confirmation still prints the complete refreshed plan for review.
 
 Forced repository cleanup tolerates a selected Git worktree that acquires a
 lock after the command creates the plan. If any apply-time operation still
