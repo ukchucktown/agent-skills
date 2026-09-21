@@ -9,14 +9,14 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use `gh` directly for read-only GitHub inspection. Keep ordinary status bounded:
-do not recursively fetch every descendant, search the full pull-request
-inventory, or inspect local worktrees unless the user requests local work
-status.
+Use `gh`, `git`, and the selected worktree manager directly. Do not create a
+helper program for this workflow. Keep each path bounded: do not recursively
+fetch every descendant, search the full pull-request inventory, or inspect
+unrelated branches and worktrees.
 
-The current implementation supports read-only `status`. It does not support
-`start`, `finish`, or `clean`. Explain this boundary. Do not approximate a
-mutating command with shell calls.
+The current implementation supports `status` and `start`. It does not support
+`finish` or `clean`. Explain this boundary. Do not approximate an unavailable
+command with shell calls.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
@@ -24,10 +24,11 @@ Map only clear start, resume, status, finish, prepare-PR, clean, or clean-up
 intent to this skill. A bare issue reference or a request to discuss, create,
 review, close, prioritize, or merge an issue is outside this workflow.
 
-For a natural-language request that would mutate state, show the resolved issue
-and planned mutations, then request confirmation. An explicit `gh-issue`
-command is already authorization for that command. An inferred issue always
-requires confirmation before mutation.
+Treat `start issue NUMBER`, `issue start NUMBER`, `GitHub issue NUMBER start`,
+and equivalent unambiguous imperatives as explicit authorization. An explicit
+`gh-issue` command is also authorization. If you must infer the issue or
+intended action, show the resolved issue and dry-run plan. Then request
+confirmation before mutation.
 
 </important>
 
@@ -76,7 +77,47 @@ an issue, confirm the issue before a state change. Create only the missing
 ancestor integration path and the requested issue worktree. Then stop. Do not
 begin implementation.
 
-This command is unavailable until its deterministic script is implemented.
+For an explicit issue, make one GitHub request with
+`references/start.graphql`:
+
+```text
+gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/start.graphql
+```
+
+Reject a missing or closed issue, a closed parent, or a hierarchy that exceeds
+the query depth. Use the returned default branch as the root base. Create an
+integration branch for every parent. Create an integration branch for the
+requested issue when it has children. Otherwise, create a task branch. Each
+integration branch uses the previous branch as its base. The task branch uses
+its direct parent's integration branch or the default branch.
+
+Before mutation, resolve the primary checkout from Git's common directory.
+Fetch once, then inspect `git worktree list --porcelain` and exact matching
+local and remote branch refs. Reuse a matching worktree. Stop if the destination
+belongs to another branch or a required existing base worktree is dirty.
+
+Read `~/.config/agent-skills/config.json` when it exists and apply the
+`gh-issue` settings in `references/start-config.md`. Otherwise prefer Supacode
+when the primary repository is registered. Create each missing worktree with:
+
+```text
+supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base BASE --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
+```
+
+Capture the returned worktree ID. Use `git worktree add` only when the selected
+manager is `git` or Supacode is unavailable in `auto` mode. Push each new
+integration branch to `origin`. Leave the task branch local until finish.
+Verify the checked-out branch, report the worktree path, and stop.
+
+For an existing local branch, omit `--base` from the Supacode command. For an
+existing remote branch, use `--base origin/BRANCH --upstream origin/BRANCH`.
+The native Git equivalents are:
+
+```text
+git -C PRIMARY worktree add -b BRANCH DESTINATION BASE
+git -C PRIMARY worktree add DESTINATION BRANCH
+git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
+```
 
 </important>
 
