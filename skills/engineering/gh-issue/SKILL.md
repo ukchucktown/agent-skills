@@ -73,9 +73,8 @@ Do not list or analyze unrelated pull requests or worktrees.
 <important if="the user asks to start or resume an issue">
 
 Resolve and display the issue and its ancestor hierarchy. If the skill infers
-an issue, confirm the issue before a state change. Create only the missing
-ancestor integration path and the requested issue worktree. Then stop. Do not
-begin implementation.
+an issue, confirm the issue before a state change. Then create only the branch
+and worktree required by the repository's policy. Stop before implementation.
 
 For an explicit issue, make one GitHub request with
 `references/start.graphql`:
@@ -84,21 +83,33 @@ For an explicit issue, make one GitHub request with
 gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/start.graphql
 ```
 
-Reject a missing or closed issue, a closed parent, or a hierarchy that exceeds
-the query depth. Use the returned default branch as the root base. Create an
-integration branch for every parent. Create an integration branch for the
-requested issue when it has children. Otherwise, create a task branch. Each
-integration branch uses the previous branch as its base. The task branch uses
-its direct parent's integration branch or the default branch.
+In the same tool call, read `~/.config/agent-skills/config.json` when it exists.
+The canonical settings are top-level. Match `repositories["OWNER/REPOSITORY"]`,
+then match an `efforts` key to the requested issue or any returned ancestor.
+The nearest matching effort wins. Explicit user and loaded repository
+instructions take precedence. Do not list or reread the skill files.
 
-Before mutation, resolve the primary checkout from Git's common directory.
-Fetch once, then inspect `git worktree list --porcelain` and exact matching
-local and remote branch refs. Reuse a matching worktree. Stop if the destination
-belongs to another branch or a required existing base worktree is dirty.
+An effort's fixed `integrationBranch` replaces the generic ancestor branch
+layout. Use its `taskBranchTemplate` and `worktreeTemplate`. If no effort policy
+matches, reuse exact existing issue work when available. Show the generic plan
+and ask the user before you create branches for an unconfigured effort.
+Do not inspect sibling issues, pull requests, or unrelated branches to infer a
+policy.
 
-Read `~/.config/agent-skills/config.json` when it exists and apply the
-`gh-issue` settings in `references/start-config.md`. Otherwise prefer Supacode
-when the primary repository is registered. Create each missing worktree with:
+Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
+Then make one batched local inspection. Resolve the primary checkout from Git's
+common directory. Inspect `git worktree list --porcelain`, only branch refs that
+match the issue number or configured policy, and the Supacode repository list.
+Use the returned JSON directly. Do not add a separate parsing command.
+
+If the issue already has a matching worktree, report it and stop. Do not inspect
+its commits, pull requests, checks, or relation to the base branch. Those checks
+belong to local implementation status and finish.
+
+If worktree creation remains necessary, fetch once. Stop if the destination
+belongs to another branch or the required base worktree is dirty. Use the
+configured manager. In `auto` mode, prefer Supacode when the primary repository
+is registered. Create a new Supacode worktree with:
 
 ```text
 supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base BASE --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
@@ -118,6 +129,11 @@ git -C PRIMARY worktree add -b BRANCH DESTINATION BASE
 git -C PRIMARY worktree add DESTINATION BRANCH
 git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
 ```
+
+Before mutation, use no more than the one hierarchy query and one batched local
+inspection. If they do not resolve the base branch, branch name, destination,
+or manager, show the unresolved value and ask one question. Do not continue
+investigating.
 
 </important>
 
