@@ -84,27 +84,36 @@ gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<ski
 ```
 
 In the same tool call, read `~/.config/agent-skills/config.json` when it exists.
-The canonical settings are top-level. Match `repositories["OWNER/REPOSITORY"]`,
-then match an `efforts` key to the requested issue or any returned ancestor.
-The nearest matching effort wins. Explicit user and loaded repository
-instructions take precedence. Do not list or reread the skill files.
-
-An effort's fixed `integrationBranch` replaces the generic ancestor branch
-layout. Use its `taskBranchTemplate` and `worktreeTemplate`. If no effort policy
-matches, reuse exact existing issue work when available. Show the generic plan
-and ask the user before you create branches for an unconfigured effort.
-Do not inspect sibling issues, pull requests, or unrelated branches to infer a
-policy.
+The canonical settings are top-level. Apply configured manager, root, or branch
+templates. Explicit user and loaded repository instructions take precedence.
+Do not list or reread the skill files.
 
 Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
 Then make one batched local inspection. Resolve the primary checkout from Git's
 common directory. Inspect `git worktree list --porcelain`, only branch refs that
-match the issue number or configured policy, and the Supacode repository list.
-Use the returned JSON directly. Do not add a separate parsing command.
+contain the bounded issue number or match an issue or ancestor label, and the
+Supacode repository list. Use the returned JSON directly. Do not add a separate
+parsing command.
 
-If the issue already has a matching worktree, report it and stop. Do not inspect
-its commits, pull requests, checks, or relation to the base branch. Those checks
-belong to local implementation status and finish.
+Treat a unique branch or worktree with a bounded issue marker such as `-83-` as
+existing issue work, regardless of its naming prefix. If the issue already has
+a matching worktree, report it and stop. Do not inspect its commits, pull
+requests, checks, or relation to the base branch. Those checks belong to local
+implementation status and finish.
+
+For missing issue work, prefer an explicit configured or repository policy.
+Otherwise, infer a shared integration branch only when one candidate is
+supported by both the returned hierarchy and local evidence. Strong evidence
+includes a non-default current branch whose name matches an issue or ancestor
+label, or a repeated sibling branch prefix based on the direct parent's returned
+child numbers. Existing evidence replaces the generic ancestor branch layout.
+Do not inspect pull requests, issue bodies, or unrelated branches to strengthen
+an inference.
+
+If the evidence identifies one shared integration branch and one task prefix,
+show them and proceed. If it identifies neither or several, show the candidates
+and ask one question. For a new effort with no existing evidence, show the
+generic per-compound integration plan and ask before you create it.
 
 If worktree creation remains necessary, fetch once. Stop if the destination
 belongs to another branch or the required base worktree is dirty. Use the
@@ -134,6 +143,12 @@ Before mutation, use no more than the one hierarchy query and one batched local
 inspection. If they do not resolve the base branch, branch name, destination,
 or manager, show the unresolved value and ask one question. Do not continue
 investigating.
+
+Treat this as a round-trip budget. Resolve existing issue work in at most two
+tool calls: configuration plus the hierarchy query, then the batched local
+inspection. New work may use one additional call that batches fetch, creation,
+any integration-branch push, and verification. Do not spend extra calls to
+improve confidence after the required evidence is sufficient.
 
 </important>
 
