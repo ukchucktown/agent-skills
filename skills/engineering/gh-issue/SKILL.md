@@ -9,11 +9,10 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use `gh` directly for read-only GitHub inspection. Use the deterministic start
-script for worktree setup. Do not add exploratory commands before either fast
-path. Keep ordinary status bounded: do not recursively fetch every descendant,
-search the full pull-request inventory, or inspect local worktrees unless the
-user requests local work status.
+Use `gh`, `git`, and the selected worktree manager directly. Do not create a
+helper program for this workflow. Keep each path bounded: do not recursively
+fetch every descendant, search the full pull-request inventory, or inspect
+unrelated branches and worktrees.
 
 The current implementation supports `status` and `start`. It does not support
 `finish` or `clean`. Explain this boundary. Do not approximate an unavailable
@@ -78,20 +77,47 @@ an issue, confirm the issue before a state change. Create only the missing
 ancestor integration path and the requested issue worktree. Then stop. Do not
 begin implementation.
 
-For an explicit issue, run the script directly without a separate status query:
+For an explicit issue, make one GitHub request with
+`references/start.graphql`:
 
 ```text
-node <skill-directory>/scripts/start.mjs --issue NUMBER --repository CHECKOUT
+gh api graphql -F owner=OWNER -F name=REPOSITORY -F number=NUMBER -F query=@<skill-directory>/references/start.graphql
 ```
 
-`CHECKOUT` may be the primary checkout or any linked worktree. If confirmation
-is required, first add `--dry-run`, show its plan, and run without `--dry-run`
-only after confirmation. Pass `--json` when structured output is useful. Do not
-repeat the script's GitHub, branch, worktree, or Supacode inspection manually.
+Reject a missing or closed issue, a closed parent, or a hierarchy that exceeds
+the query depth. Use the returned default branch as the root base. Create an
+integration branch for every parent. Create an integration branch for the
+requested issue when it has children. Otherwise, create a task branch. Each
+integration branch uses the previous branch as its base. The task branch uses
+its direct parent's integration branch or the default branch.
 
-The script prefers a registered Supacode repository and otherwise uses native
-Git. See `references/start-config.md` for optional overrides. If the script
-reports a conflict, show it and stop. Do not recreate its mutations by hand.
+Before mutation, resolve the primary checkout from Git's common directory.
+Fetch once, then inspect `git worktree list --porcelain` and exact matching
+local and remote branch refs. Reuse a matching worktree. Stop if the destination
+belongs to another branch or a required existing base worktree is dirty.
+
+Read `~/.config/agent-skills/config.json` when it exists and apply the
+`gh-issue` settings in `references/start-config.md`. Otherwise prefer Supacode
+when the primary repository is registered. Create each missing worktree with:
+
+```text
+supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base BASE --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
+```
+
+Capture the returned worktree ID. Use `git worktree add` only when the selected
+manager is `git` or Supacode is unavailable in `auto` mode. Push each new
+integration branch to `origin`. Leave the task branch local until finish.
+Verify the checked-out branch, report the worktree path, and stop.
+
+For an existing local branch, omit `--base` from the Supacode command. For an
+existing remote branch, use `--base origin/BRANCH --upstream origin/BRANCH`.
+The native Git equivalents are:
+
+```text
+git -C PRIMARY worktree add -b BRANCH DESTINATION BASE
+git -C PRIMARY worktree add DESTINATION BRANCH
+git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
+```
 
 </important>
 
