@@ -7,6 +7,23 @@ creation, pull-request preparation, cleanup, and cancellation.
 The skill supports GitHub only. It does not create issues, plan product work,
 implement changes, review pull requests, or merge pull requests.
 
+## Quick reference
+
+| Request | Result |
+|---|---|
+| `status issue 75` | Show the issue state and recommend the next available work. |
+| `start issue 75` | Create or reuse the issue branch and worktree, then stop before implementation. |
+| `finish issue 75` | Validate, commit, push, and prepare an unmerged pull request. |
+| `clean issue 75` | Remove eligible artifacts from completed work after confirmation. |
+| `clean` | List residual repository branches and let you select cleanup candidates. |
+| `force clean` | Include unmerged, divergent, dirty, or active candidates with explicit warnings. |
+| `cancel issue 75` | Close abandoned work as `Not planned` and remove its artifacts after confirmation. |
+
+`start` prepares the workspace but does not implement the issue. `finish`
+prepares the pull request but does not merge it. Repository cleanup does not
+close issues or pull requests. Use `cancel` when you also want to close
+abandoned work.
+
 ## Requirements
 
 Install these tools before you use the skill:
