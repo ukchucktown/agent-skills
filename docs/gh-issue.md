@@ -101,8 +101,14 @@ The start workflow handles these tasks:
 5. Set the configured GitHub Project status to `In Progress`.
 6. Stop before implementation starts.
 
-If the branch layout is ambiguous, the skill reports the conflict and asks one
-question. It does not use more searches to guess the answer.
+One checked-in command performs the complete start or resume workflow. The
+agent does not coordinate separate GitHub, Git, Project, or worktree-manager
+calls and does not delegate this deterministic work to another agent.
+
+If required evidence conflicts, the command returns one structured question
+before it changes state. The skill asks that question and reruns the command
+with the selected branch, base, destination, or manager. It does not use more
+searches to guess the answer.
 
 Use `resume` when a linked remote branch exists without a local worktree. The
 skill attaches that branch through the configured worktree manager.
@@ -246,6 +252,9 @@ templates.
 
 Repository instructions and an explicit user choice take precedence over the
 machine configuration.
+
+An exact repository entry can override the worktree manager, worktree root, or
+templates for that repository.
 
 ### GitHub Projects
 

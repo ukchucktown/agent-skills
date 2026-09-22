@@ -9,14 +9,13 @@ Manage the mechanics around existing GitHub issues. GitHub is the only issue
 tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
-Use the checked-in commands for status, Project synchronization, and finish.
-Use the query wrapper for the remaining start reads. Use `gh`, `git`, and the
-selected worktree manager directly when start requires GitHub or local setup.
-Keep each path bounded: do not recursively fetch every descendant, search the
-full pull-request inventory, or inspect unrelated branches and worktrees.
+Use the checked-in commands for each workflow. Do not reconstruct their reads,
+plans, Git operations, GitHub operations, or worktree-manager operations. Keep
+each path bounded: do not recursively fetch every descendant, search the full
+pull-request inventory, or inspect unrelated branches and worktrees.
 
-The current implementation supports `status`, `start`, `finish`, `clean`, and
-`cancel`.
+The current implementation supports `status`, `start`, `resume`, `finish`,
+`clean`, and `cancel`.
 
 Cleanup and cancellation commands emit each discovery result and detailed plan
 as one buffered block. Put that complete output in one fenced `text` code block
@@ -59,17 +58,17 @@ Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 Pass `--local-only` before the repository only when the user explicitly wants
 to preserve remote branches. The command resolves the top-level effort and
 prints one combined plan. It lists open issues that will close as `Not planned`,
-open pull requests that will close without merging, issue worktrees and
-branches that will be removed, warnings, and preserved artifacts. Planning is
+open pull requests that will close with no merge, issue worktrees and branches
+that the command will remove, warnings, and preserved artifacts. Planning is
 read-only and creates no saved plan file.
 
 Cancellation is allowed to discard unmerged commits, divergent local and
 remote tips, uncommitted changes, and worktrees active in Supacode. It never
 removes the stable checkout, a protected branch, an unrelated branch, an
 unavailable worktree, or a branch used by more than one worktree. Relay the
-plan without reconstructing it.
+command's plan. Do not reconstruct it.
 
-Request one confirmation immediately before applying the plan. After
+Request one confirmation immediately before you apply the plan. After
 confirmation, pass the exact displayed token:
 
 ```text
@@ -131,7 +130,7 @@ corresponding branches:
 ```
 
 Pass `--local-only` before the selections only when the user wants to preserve
-remote branches. Relay the plan without reconstructing it. Ordinary repository
+remote branches. Relay the command's plan. Do not reconstruct it. Ordinary repository
 cleanup blocks dirty or Supacode-active worktrees and divergent local and
 remote tips. It accepts a branch tip under either condition:
 
@@ -158,8 +157,8 @@ and mode with the exact displayed token:
 <skill-directory>/scripts/clean.sh --select BRANCH [--select BRANCH...] --confirm TOKEN OWNER/REPOSITORY
 ```
 
-Keep `--force` on planning and confirmation commands only when the user
-explicitly requested force cleanup.
+Keep `--force` on commands that plan and confirm only when the user explicitly
+requested force cleanup.
 
 If the command rejects a stale token, relay the new plan and request
 confirmation again. If application fails after mutation starts, relay the
@@ -205,130 +204,38 @@ Do not list or analyze unrelated pull requests or worktrees.
 
 <important if="the user asks to start or resume an issue">
 
-Resolve and display the issue and its ancestor hierarchy. If the skill infers
-an issue, confirm the issue before a state change. Then create only the branch
-and worktree required by the repository's policy. Stop before implementation.
-
-For an explicit issue, run the query wrapper without opening, listing, or
-reconstructing it:
+If the skill inferred the issue, confirm the issue before a state change. For
+an explicit issue, run one command from a checkout of the target repository:
 
 ```text
-<skill-directory>/scripts/query.sh start OWNER/REPOSITORY NUMBER
+<skill-directory>/scripts/start.sh start OWNER/REPOSITORY NUMBER
+<skill-directory>/scripts/start.sh resume OWNER/REPOSITORY NUMBER
 ```
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
-The wrapper makes one `gh api graphql` call and returns its JSON. Use that JSON
-directly. Do not add a parsing command.
+The command resolves and validates the hierarchy, existing work, effective
+configuration, branch layout, destination, and worktree manager. It
+synchronizes configured Project status, creates or attaches the GitHub-linked
+branch and worktree, verifies the checked-out branch, and returns a compact
+result. Relay that result and stop before implementation.
 
-Run the wrapper and the compact read-only local inspection in one tool call.
-Do not resolve the origin in a separate call. In that same call, read
-the effective Project settings with the command below, resolve the primary
-checkout from Git's common directory, and output:
+Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`,
+`git`, or worktree-manager commands for start or resume. Do not delegate the
+command to another agent.
 
-```text
-<skill-directory>/scripts/project-config.sh OWNER/REPOSITORY
-```
-
-- The compact `git worktree list` output. Omit `--porcelain` because its HEAD
-  and lock metadata are not start evidence.
-- Local and remote refs that contain the bounded issue number.
-- The primary checkout's current branch and short status.
-- Only the matching repository ID from `supacode repo list` when Supacode is the
-  selected or automatic manager.
-
-Do not emit unrelated refs, Supacode repository IDs, or per-worktree metadata.
-Keep the compact worktree branches because sibling patterns can identify a
-shared integration branch.
-
-Shared configuration settings are top-level. A top-level `projectStatus`
-applies only when its owner matches the repository owner. An exact repository
-entry can disable or override it. Apply configured manager, root, or branch
-templates. Explicit user and loaded repository instructions take precedence.
-Do not list or reread the skill files.
-
-Reject a missing or closed issue, a closed parent, or a truncated hierarchy.
-Also reject a truncated linked-branch result. Use only the data from the
-combined query and local inspection. Do not add a separate parsing or discovery
-command.
-
-Treat a non-null linked branch or a unique local branch or worktree with a
-bounded issue marker such as `-83-` as existing issue work, regardless of its
-naming prefix. If the issue already has a matching worktree, update stale
-configured Project status, report the worktree, and stop. If the issue has one
-linked remote branch without a worktree, an explicit start reports that the
-issue is already started and stops. An explicit resume attaches that branch
-through the configured manager. Do not create a second branch. Do not inspect
-commits, pull requests, checks, or relation to the base branch. Those checks
-belong to local implementation status and finish.
-
-For missing issue work, prefer an explicit configured or repository policy.
-Otherwise, infer a shared integration branch only when one candidate is
-supported by both the returned hierarchy and local evidence. Strong evidence
-includes a non-default current branch whose name matches an issue or ancestor
-label, or a repeated sibling branch prefix based on the direct parent's returned
-child numbers. Existing evidence replaces the generic ancestor branch layout.
-Do not inspect pull requests, issue bodies, or unrelated branches to strengthen
-an inference.
-
-If the evidence identifies one shared integration branch and one task prefix,
-show them and proceed. If it identifies several conflicting candidates, show
-them and ask one question. For an explicit start with no existing pattern, show
-the generic per-compound integration plan and create it without another
-confirmation.
-
-In the mutation call, synchronize the configured Project before branch
-creation:
+A conflict returns one JSON object with `status: needs_input`, a `field`, one
+`question`, and bounded `candidates`. Ask that exact question. Then rerun the
+same command once with the matching option:
 
 ```text
-<skill-directory>/scripts/project-start.sh OWNER/REPOSITORY NUMBER
+--branch BRANCH
+--base BRANCH
+--destination PATH
+--manager auto|supacode|git
 ```
 
-The command validates Project access and configuration, adds missing items to a
-configured target Project, and updates the focused issue and its open ancestors.
-Stop on an error before branch creation. When it reports that the focused issue
-already had the start value and no linked or local issue branch exists, report
-possible work by another contributor and stop. Do not create duplicate work
-from local absence alone.
-
-Create every missing issue branch as a GitHub-linked remote branch from its
-resolved base. This applies to compound integration branches and standalone task
-branches:
-
-```text
-gh issue develop NUMBER --repo OWNER/REPOSITORY --base BASE --name BRANCH
-```
-
-Then fetch once and create the worktree from `origin/BRANCH`. Stop if the
-destination belongs to another branch or a required base worktree is dirty. Use
-the configured manager. In `auto` mode, prefer Supacode when the primary
-repository is registered. Create a Supacode worktree with:
-
-```text
-supacode repo worktree-new -r REPOSITORY_ID --branch BRANCH --base origin/BRANCH --upstream origin/BRANCH --location REPOSITORY_WORKTREE_ROOT --name WORKTREE_NAME --background
-```
-
-Capture the returned worktree ID. Use `git worktree add -b BRANCH --track
-DESTINATION origin/BRANCH` only when the selected manager is `git` or Supacode
-is unavailable in `auto` mode. Every new task and integration branch is remote
-and linked from start. Verify the checked-out branch, report the linked branch
-and worktree path, and stop.
-
-For an existing local branch, omit `--base` from the Supacode command. For an
-existing remote branch, use `--base origin/BRANCH --upstream origin/BRANCH`.
-The native Git equivalents are:
-
-```text
-git -C PRIMARY worktree add DESTINATION BRANCH
-git -C PRIMARY worktree add -b BRANCH --track DESTINATION origin/BRANCH
-```
-
-Treat this as a round-trip budget. Resolve issue work in one tool call that
-combines the query, effective Project configuration, and local inspection. Any
-required Project synchronization or new work may use one additional call that
-batches Project updates, linked-branch creation, fetch, worktree creation, and
-verification. If the first call does not resolve the base branch, branch name,
-destination, or manager, show the unresolved value and ask one question. Do not
-investigate or spend extra calls to improve confidence.
+Do not investigate beyond the command result. Other nonzero results are
+blocked outcomes. Relay the command's result. Do not reconstruct the workflow.
 
 </important>
 
@@ -386,7 +293,7 @@ remote branches. The command resolves the top-level effort, verifies its issue
 tree and branch state, and prints the complete cleanup plan. Planning is
 read-only and creates no saved plan file.
 
-Relay the plan without reconstructing it. The command preserves dirty or
+Relay the command's plan. Do not reconstruct it. The command preserves dirty or
 unavailable worktrees, the active checkout, protected branches, branches with
 open pull requests, divergent local and remote tips, and work that cannot be
 verified in the stable branch. Stop when nothing is eligible.
