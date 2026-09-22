@@ -47,8 +47,11 @@ Progress`.
 An exact repository entry overlays the matching top-level default. It can set
 `enabled` to `false` or override the Project, field, or start option. An exact
 entry can also enable Project status for a repository owned by someone else.
-The earlier per-repository shape remains valid without `owner` and `number`; it
-updates matching Projects only when the issue is already a Project item.
+The earlier per-repository shape remains valid without `owner` and `number`.
+It updates matching Projects only when the issue is already a Project item.
+
+An exact repository entry can also override `worktreeManager`, `worktreeRoot`,
+`integrationBranchTemplate`, `taskBranchTemplate`, or `worktreeTemplate`.
 
 Enabled repositories require GitHub CLI authentication with `read:project` and
 `project` scopes. Repositories without an effective enabled setting make no
@@ -69,6 +72,6 @@ field and option match. Stop before branch creation when the configured match is
 missing, duplicated, truncated, or inaccessible.
 
 Explicit user or loaded repository instructions override this file. Existing
-issue branches and a clearly established shared integration pattern override
-generic templates. When the evidence is ambiguous, ask. Do not add a
-repository-specific exception to this file.
+issue branches override generic templates. When evidence conflicts, the start
+command returns one structured question. Do not add a repository-specific
+exception to this file.
