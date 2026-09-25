@@ -144,6 +144,14 @@ fi
 worktree_path=$(printf '%s' "$selected" | cut -f1)
 branch=$(printf '%s' "$selected" | cut -f2)
 
+dirty=$(git -C "$worktree_path" status --porcelain=v1 --untracked-files=all)
+conflicts=$(git -C "$worktree_path" diff --name-only --diff-filter=U --)
+if [ -n "$conflicts" ]; then
+  printf 'Issue #%s has unresolved conflicts in %s.\n' "$number" "$worktree_path" >&2
+  printf '%s\n' "$conflicts" >&2
+  exit 2
+fi
+
 pr_json=$(gh pr list \
   --repo "$canonical_repository" \
   --head "$branch" \
@@ -166,6 +174,11 @@ if [ "$pr_count" -eq 1 ]; then
   base_branch=$(printf '%s' "$pr_json" | jq -r '.[0].baseRefName')
 
   if [ "$pr_state" = "MERGED" ]; then
+    if [ -n "$dirty" ]; then
+      printf 'Issue #%s has uncommitted work after its pull request merged.\n' "$number" >&2
+      printf '%s\n' "$dirty" >&2
+      exit 2
+    fi
     if [ "$dry_run" = "true" ]; then
       printf 'Issue #%s would close as completed because %s is merged.\n' "$number" "$pr_url"
     else
@@ -229,13 +242,6 @@ else
   exit 2
 fi
 
-dirty=$(git -C "$worktree_path" status --porcelain=v1)
-if [ -n "$dirty" ]; then
-  printf 'Issue #%s has uncommitted work in %s.\n' "$number" "$worktree_path" >&2
-  printf '%s\n' "$dirty" >&2
-  exit 2
-fi
-
 if git -C "$worktree_path" diff --quiet "${base_ref}...HEAD" --; then
   has_changes=false
 else
@@ -247,7 +253,7 @@ else
   has_changes=true
 fi
 
-if [ "$has_changes" = "false" ]; then
+if [ "$has_changes" = "false" ] && [ -z "$dirty" ]; then
   if [ "$pr_state" = "OPEN" ]; then
     echo "finish.sh: open pull request $pr_url conflicts with a no-change branch" >&2
     exit 2
@@ -274,5 +280,12 @@ printf 'Branch: %s\n' "$branch"
 printf 'Base: %s\n' "$base_branch"
 printf 'Pull request: %s\n' "$pr_url"
 printf 'Changed paths:\n'
-printf '%s\n' "$changed_paths" | sed 's/^/- /'
+if [ -n "$changed_paths" ]; then
+  printf 'Committed paths:\n'
+  printf '%s\n' "$changed_paths" | sed 's/^/- /'
+fi
+if [ -n "$dirty" ]; then
+  printf 'Uncommitted paths (Git status):\n'
+  printf '%s\n' "$dirty"
+fi
 printf 'Next: review and validate these changes, then commit, push, and prepare the pull request.\n'

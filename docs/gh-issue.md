@@ -127,6 +127,12 @@ commits those changes, pushes the branch, and prepares a ready-for-review pull
 request. The pull request targets the resolved parent or stable branch and ends
 with `Closes #75`.
 
+Finish accepts uncommitted work and reports it separately from committed paths.
+The report includes staged changes, unstaged changes, and untracked files. The
+agent reviews these files before it commits the intended changes. Unresolved
+conflicts block finish. Uncommitted work prevents automatic issue closure,
+including when an earlier pull request merged.
+
 The skill never merges the pull request. If the issue has no changes and no
 pull request, the workflow closes verified no-change work as completed.
 

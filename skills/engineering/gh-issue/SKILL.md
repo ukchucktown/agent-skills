@@ -261,7 +261,12 @@ the reported `--base BRANCH` option.
 When the command reports changed paths, use its worktree, branch, base, and
 pull-request values for the rest of finish. Do not repeat its inspection.
 
+The result separates committed paths from uncommitted paths. Uncommitted paths
+use Git status codes and include staged, unstaged, and untracked files.
 Review every changed path and the complete diff in the selected worktree.
+Review the staged and unstaged diffs. Read untracked files before any commit.
+If the command reports unresolved conflicts, resolve those conflicts before
+another finish attempt.
 Separate intended issue work from unrelated changes. Use the validation commands
 named by loaded repository instructions or its immediately visible root task
 configuration. If the intended changes or required validation are ambiguous,
