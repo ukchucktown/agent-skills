@@ -69,6 +69,7 @@ cat >"$config_file" <<'EOF'
   }
 }
 EOF
+export AGENT_SKILLS_CONFIG="$config_file"
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
 
@@ -132,6 +133,19 @@ changed_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
 printf '%s\n' "$changed_output" | grep -F 'Issue #40 has changes that require review and validation.' >/dev/null
 printf '%s\n' "$changed_output" | grep -F -- '- change.txt' >/dev/null
 [ ! -s "$call_log" ]
+
+# Both commands honor a repository's single task base.
+git -C "$primary" branch task-integration main
+jq '.repositories["example/agent-skills"].taskBaseBranch = "task-integration"' "$config_file" >"$config_file.next"
+mv "$config_file.next" "$config_file"
+configured_finish=$(cd "$primary" && PATH="$fake_bin:$PATH" \
+  GH_FIXTURE_DIRECTORY="$fixture_directory" GH_CALL_LOG="$call_log" \
+  "$finish_command" example/agent-skills 40)
+printf '%s\n' "$configured_finish" | grep -Fx 'Base: task-integration' >/dev/null
+explicit_finish=$(cd "$primary" && PATH="$fake_bin:$PATH" \
+  GH_FIXTURE_DIRECTORY="$fixture_directory" GH_CALL_LOG="$call_log" \
+  "$finish_command" --base main example/agent-skills 40)
+printf '%s\n' "$explicit_finish" | grep -Fx 'Base: main' >/dev/null
 
 shared_config_file=$temporary_directory/shared-config.json
 cat >"$shared_config_file" <<'EOF'

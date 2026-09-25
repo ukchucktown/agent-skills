@@ -215,9 +215,12 @@ an explicit issue, run one command from a checkout of the target repository:
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The command resolves and validates the hierarchy, existing work, effective
 configuration, branch layout, destination, and worktree manager. It
-synchronizes configured Project status, creates or attaches the GitHub-linked
-branch and worktree, verifies the checked-out branch, and returns a compact
-result. Relay that result and stop before implementation.
+checks ancestor branches for missing commits and applies the optional repository
+task base from [the start configuration](references/start-config.md). It assigns
+the authenticated user when the issue has no assignee. It preserves and reports
+existing assignees. It synchronizes configured Project status and creates or
+attaches the GitHub-linked branch and worktree. It verifies the checked-out
+branch and returns a compact result. Relay that result and stop before implementation.
 
 Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`,
 `git`, or worktree-manager commands for start or resume. Do not delegate the

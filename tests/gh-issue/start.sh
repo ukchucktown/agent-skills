@@ -42,6 +42,12 @@ case "${1:-}:${2:-}" in
         total=0
         title='Create a Supacode worktree'
         ;;
+      106|107|108|109|110)
+        linked='[]'
+        total=0
+        title="Check task base"
+        parent='{"number":100,"title":"Epic","state":"OPEN","linkedBranches":{"totalCount":1,"nodes":[{"ref":{"name":"integration/issue-100-build-the-platform","repository":{"nameWithOwner":"example/start"}}}]},"parent":{"number":99,"title":"Initiative","state":"OPEN","linkedBranches":{"totalCount":1,"nodes":[{"ref":{"name":"initiative","repository":{"nameWithOwner":"example/start"}}}]},"parent":null}}'
+        ;;
       105)
         linked='[]'
         total=0
@@ -50,14 +56,25 @@ case "${1:-}:${2:-}" in
         ;;
       *) exit 70 ;;
     esac
+    assignees='{"totalCount":0,"nodes":[]}'
+    if [ "$number" = 102 ]; then
+      assignees='{"totalCount":1,"nodes":[{"login":"someone-else"}]}'
+    fi
     parent=${parent:-null}
     jq -cn \
       --argjson number "$number" \
       --arg title "$title" \
       --argjson linked "$linked" \
       --argjson total "$total" \
+      --argjson assignees "$assignees" \
       --argjson parent "$parent" \
-      '{data:{repository:{nameWithOwner:"example/start",defaultBranchRef:{name:"main"},issue:{number:$number,title:$title,state:"OPEN",labels:{nodes:[]},linkedBranches:{totalCount:$total,nodes:$linked},subIssues:{totalCount:0},parent:$parent}}}}'
+      '{data:{repository:{nameWithOwner:"example/start",defaultBranchRef:{name:"main"},issue:{assignees:$assignees,number:$number,title:$title,state:"OPEN",labels:{nodes:[]},linkedBranches:{totalCount:$total,nodes:$linked},subIssues:{totalCount:0},parent:$parent}}}}'
+    ;;
+  api:user)
+    printf 'test-user\n'
+    ;;
+  issue:edit)
+    printf '%s\n' "$*" >>"$GH_CALL_LOG"
     ;;
   issue:develop)
     issue_number=$3
@@ -73,13 +90,9 @@ case "${1:-}:${2:-}" in
       esac
     done
     printf 'issue develop %s --base %s --name %s\n' "$issue_number" "$base" "$branch" >>"$GH_CALL_LOG"
-    if "$REAL_GIT" -C "$START_PRIMARY" rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
-      "$REAL_GIT" -C "$START_PRIMARY" push -q origin "$base:refs/heads/$branch"
-    else
-      remote_url=$("$REAL_GIT" -C "$START_PRIMARY" remote get-url origin)
-      base_oid=$("$REAL_GIT" --git-dir="$remote_url" rev-parse "refs/heads/$base")
-      "$REAL_GIT" --git-dir="$remote_url" update-ref "refs/heads/$branch" "$base_oid"
-    fi
+    remote_url=$("$REAL_GIT" -C "$START_PRIMARY" remote get-url origin)
+    base_oid=$("$REAL_GIT" --git-dir="$remote_url" rev-parse "refs/heads/$base")
+    "$REAL_GIT" --git-dir="$remote_url" update-ref "refs/heads/$branch" "$base_oid"
     ;;
   *)
     printf 'unexpected gh call: %s\n' "$*" >&2
@@ -249,5 +262,74 @@ grep -F 'issue develop 100 --base main --name integration/issue-100-build-the-pl
 grep -F 'issue develop 105 --base integration/issue-100-build-the-platform --name feat/issue-105-build-the-child-task' "$call_log" >/dev/null
 compound_worktree=$temporary_directory/worktrees/start/issue-105-build-the-child-task
 [ "$(git -C "$compound_worktree" branch --show-current)" = 'feat/issue-105-build-the-child-task' ]
+
+# The initiative advances after the epic branch was created.
+git -C "$primary" checkout -q -b initiative
+printf 'delivery plan\n' >"$primary/plan.txt"
+git -C "$primary" add plan.txt
+git -C "$primary" commit -q -m 'Advance the initiative'
+git -C "$primary" push -q origin initiative
+git -C "$primary" checkout -q main
+
+run_start() {
+  (cd "$primary" && PATH="$fake_bin:$PATH" \
+    REAL_GIT="$(command -v git)" START_PRIMARY="$primary" \
+    GH_CALL_LOG="$call_log" AGENT_SKILLS_CONFIG="$config_file" \
+    "$start_command" "$@")
+}
+: >"$call_log"
+set +e
+stale_output=$(run_start start example/start 106)
+stale_status=$?
+set -e
+[ "$stale_status" -eq 2 ]
+printf '%s' "$stale_output" | jq -e '
+  .status == "needs_input" and .field == "base" and
+  (.question | contains("missing 1 commit")) and
+  .candidates == ["initiative", "integration/issue-100-build-the-platform"]
+' >/dev/null
+[ ! -s "$call_log" ]
+
+# Divergence also requires a choice and preserves both branches.
+git -C "$primary" checkout -q integration/issue-100-build-the-platform
+printf 'epic work\n' >"$primary/epic.txt"
+git -C "$primary" add epic.txt
+git -C "$primary" commit -qm 'Diverge the epic'
+git -C "$primary" push -q origin integration/issue-100-build-the-platform
+git -C "$primary" checkout -q main
+if run_start start example/start 109 >"$temporary_directory/divergent"; then exit 1; fi
+jq -e '.field == "base" and (.question | contains("missing 1 commit"))' "$temporary_directory/divergent" >/dev/null
+[ ! -s "$call_log" ]
+
+# The top ancestor must also contain the current default branch.
+printf 'default update\n' >"$primary/default.txt"
+git -C "$primary" add default.txt
+git -C "$primary" commit -qm 'Advance the default branch'
+git -C "$primary" push -q origin main
+if run_start start example/start 110 >"$temporary_directory/top-stale"; then exit 1; fi
+jq -e '.field == "base" and .candidates == ["main", "initiative"]' "$temporary_directory/top-stale" >/dev/null
+[ ! -s "$call_log" ]
+
+override_output=$(run_start start --base initiative example/start 106)
+printf '%s\n' "$override_output" | grep -F 'Assignees: test-user (assigned)' >/dev/null
+grep -F 'issue edit 106 --repo example/start --add-assignee test-user' "$call_log" >/dev/null
+[ -f "$temporary_directory/worktrees/start/issue-106-check-task-base/plan.txt" ]
+
+jq '.repositories["example/start"] = {taskBaseBranch:"initiative"}' "$config_file" >"$config_file.next"
+mv "$config_file.next" "$config_file"
+: >"$call_log"
+configured_output=$(run_start start example/start 107)
+grep -F 'issue develop 107 --base initiative' "$call_log" >/dev/null
+[ "$(grep -c '^issue develop ' "$call_log")" -eq 1 ]
+[ -f "$temporary_directory/worktrees/start/issue-107-check-task-base/plan.txt" ]
+
+# An explicit base takes precedence over the repository setting.
+: >"$call_log"
+run_start start --base main example/start 108 >/dev/null
+grep -F 'issue develop 108 --base main' "$call_log" >/dev/null
+
+# Existing assignments remain unchanged on both start and resume.
+printf '%s\n' "$existing_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
+printf '%s\n' "$resume_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
 
 printf 'gh-issue start tests passed\n'

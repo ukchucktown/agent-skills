@@ -200,6 +200,10 @@ if [ -z "$base_branch" ]; then
   if [ -n "$base_override" ]; then
     base_branch=$base_override
   else
+    config=$("$script_directory/start-config.sh" "$canonical_repository")
+    if [ "$child_total" -eq 0 ]; then
+      base_branch=$(printf '%s' "$config" | jq -r '.taskBaseBranch // empty')
+    fi
     parent_number=$(printf '%s' "$finish_json" | jq -r '.data.repository.issue.parent.number // empty')
   fi
   if [ -z "${parent_number:-}" ] && [ -z "$base_branch" ]; then

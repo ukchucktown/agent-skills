@@ -98,8 +98,9 @@ The start workflow handles these tasks:
 3. Use an established repository branch pattern when the evidence is clear.
 4. Create the necessary remote branch and local worktree when work does not
    exist.
-5. Set the configured GitHub Project status to `In Progress`.
-6. Stop before implementation starts.
+5. Assign the authenticated user when the issue has no assignee.
+6. Set the configured GitHub Project status to `In Progress`.
+7. Stop before implementation starts.
 
 One checked-in command performs the complete start or resume workflow. The
 agent does not coordinate separate GitHub, Git, Project, or worktree-manager
@@ -109,6 +110,11 @@ If required evidence conflicts, the command returns one structured question
 before it changes state. The skill asks that question and reruns the command
 with the selected branch, base, destination, or manager. It does not use more
 searches to guess the answer.
+
+Start preserves existing assignees and reports their names. Before branch
+creation, start checks whether each ancestor branch lacks commits from its
+higher branch. If an ancestor is behind or divergent, the command reports the
+missing commit count and requests a base.
 
 Use `resume` when a linked remote branch exists without a local worktree. The
 skill attaches that branch through the configured worktree manager.
@@ -255,6 +261,12 @@ machine configuration.
 
 An exact repository entry can override the worktree manager, worktree root, or
 templates for that repository.
+
+A repository can declare `taskBaseBranch` under its entry in `repositories`.
+Start uses this existing branch for tasks without direct children and omits
+intermediate ancestor branches. Finish uses the same base for new task pull
+requests. An explicit `--base` overrides the setting. An existing pull request
+keeps its base. Compound issues still use the ancestor hierarchy.
 
 ### GitHub Projects
 

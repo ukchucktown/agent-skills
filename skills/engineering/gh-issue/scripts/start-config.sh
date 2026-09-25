@@ -21,7 +21,7 @@ command -v jq >/dev/null 2>&1 || {
 
 config_path=${AGENT_SKILLS_CONFIG:-${HOME}/.config/agent-skills/config.json}
 if [ ! -r "$config_path" ]; then
-  printf '%s\n' '{"worktreeManager":"auto","worktreeRoot":null,"integrationBranchTemplate":"integration/issue-{number}-{slug}","taskBranchTemplate":"feat/issue-{number}-{slug}","worktreeTemplate":"issue-{number}-{slug}"}'
+  printf '%s\n' '{"worktreeManager":"auto","worktreeRoot":null,"taskBaseBranch":null,"integrationBranchTemplate":"integration/issue-{number}-{slug}","taskBranchTemplate":"feat/issue-{number}-{slug}","worktreeTemplate":"issue-{number}-{slug}"}'
   exit 0
 fi
 
@@ -32,6 +32,7 @@ if ! jq -ce --arg repository "$repository" '
     error("repositories[\($repository)] must be an object")
   else . end |
   {
+    taskBaseBranch: ($override.taskBaseBranch // null),
     worktreeManager: ($override.worktreeManager // .worktreeManager // "auto"),
     worktreeRoot: ($override.worktreeRoot // .worktreeRoot // null),
     integrationBranchTemplate: ($override.integrationBranchTemplate // .integrationBranchTemplate // "integration/issue-{number}-{slug}"),
@@ -41,6 +42,8 @@ if ! jq -ce --arg repository "$repository" '
   .worktreeManager as $manager |
   if (["auto", "supacode", "git"] | index($manager)) == null then
     error("worktreeManager must be auto, supacode, or git")
+  elif .taskBaseBranch != null and ((.taskBaseBranch | type) != "string" or (.taskBaseBranch | length) == 0) then
+    error("taskBaseBranch must be a nonempty branch name")
   elif .worktreeRoot != null and ((.worktreeRoot | type) != "string" or (.worktreeRoot | startswith("/") | not)) then
     error("worktreeRoot must be an absolute path")
   elif any([.integrationBranchTemplate, .taskBranchTemplate, .worktreeTemplate][];

@@ -78,6 +78,34 @@ branch_exists_remotely() {
   git -C "$primary" show-ref --verify --quiet "refs/remotes/origin/$1"
 }
 
+branch_reference() {
+  if branch_exists_remotely "$1"; then
+    printf 'refs/remotes/origin/%s\n' "$1"
+  elif branch_exists_locally "$1"; then
+    printf 'refs/heads/%s\n' "$1"
+  else
+    echo "start.sh: base branch $1 is unavailable" >&2
+    return 2
+  fi
+}
+
+assign_issue() {
+  assignee_count=$(jq -r '.data.repository.issue.assignees.totalCount' "$issue_json")
+  assignee_loaded=$(jq -r '.data.repository.issue.assignees.nodes | length' "$issue_json")
+  [ "$assignee_count" = "$assignee_loaded" ] || {
+    echo "start.sh: GitHub truncated issue assignees" >&2
+    return 2
+  }
+  if [ "$assignee_count" -eq 0 ]; then
+    assignee=$(gh api user --jq '.login')
+    [ -n "$assignee" ] || return 2
+    gh issue edit "$number" --repo "$canonical_repository" --add-assignee "$assignee" >/dev/null
+    assignment="$assignee (assigned)"
+  else
+    assignment="$(jq -r '.data.repository.issue.assignees.nodes | map(.login) | join(", ")' "$issue_json") (preserved)"
+  fi
+}
+
 [ "$#" -ge 1 ] || usage
 mode=$1
 shift
@@ -205,6 +233,16 @@ awk '
 ' "$temporary_directory/worktrees" >"$worktree_rows"
 
 config=$("$script_directory/start-config.sh" "$canonical_repository")
+configured_base=$(printf '%s' "$config" | jq -r '.taskBaseBranch // empty')
+if [ -z "$selected_base" ] && [ "$(jq -r '.[0].subIssues.totalCount // 0' "$hierarchy_file")" -eq 0 ]; then
+  selected_base=$configured_base
+fi
+if [ -n "$selected_base" ]; then
+  git check-ref-format "refs/heads/$selected_base" >/dev/null || {
+    echo "start.sh: invalid base branch $selected_base" >&2
+    exit 2
+  }
+fi
 configured_manager=$(printf '%s' "$config" | jq -r '.worktreeManager')
 [ -z "$selected_manager" ] || configured_manager=$selected_manager
 
@@ -284,6 +322,8 @@ esac
 hierarchy_text=$(jq -r 'reverse | map("#" + (.number | tostring) + " " + .title) | join(" > ")' "$hierarchy_file")
 if [ -n "$existing_worktree" ]; then
   "$script_directory/project-start.sh" "$canonical_repository" "$number" >"$temporary_directory/project-output"
+  assign_issue
+  printf 'Assignees: %s\n' "$assignment"
   printf 'Status: existing_worktree\n'
   printf 'Repository: %s\n' "$canonical_repository"
   printf 'Issue: #%s %s\n' "$number" "$issue_title"
@@ -296,6 +336,8 @@ fi
 
 if [ -n "$focused_branch" ] && [ "$mode" = "start" ]; then
   "$script_directory/project-start.sh" "$canonical_repository" "$number" >"$temporary_directory/project-output"
+  assign_issue
+  printf 'Assignees: %s\n' "$assignment"
   printf 'Status: already_started\n'
   printf 'Repository: %s\n' "$canonical_repository"
   printf 'Issue: #%s %s\n' "$number" "$issue_title"
@@ -310,7 +352,10 @@ fi
 creation_plan=$temporary_directory/creation-plan
 : >"$creation_plan"
 if [ -z "$focused_branch" ]; then
+  git -C "$primary" fetch origin
   previous_branch=${selected_base:-$default_branch}
+  previous_ref=$(branch_reference "$previous_branch")
+  comparison_branch=$previous_branch
   if [ -z "$selected_base" ]; then
     jq -c 'reverse[]' "$hierarchy_file" >"$temporary_directory/hierarchy-lines"
   else
@@ -345,6 +390,16 @@ if [ -z "$focused_branch" ]; then
       fi
       item_branch=$(render_template "$template" "$item_number" "$item_slug")
       printf '%s\t%s\t%s\n' "$item_number" "$item_branch" "$previous_branch" >>"$creation_plan"
+    fi
+    if [ "$item_candidate_count" -eq 1 ] && [ "$item_number" -ne "$number" ]; then
+      item_ref=$(branch_reference "$item_branch")
+      missing=$(git -C "$primary" rev-list --count "$item_ref..$previous_ref")
+      if [ "$missing" -gt 0 ]; then
+        printf '%s\n%s\n' "$comparison_branch" "$item_branch" >"$temporary_directory/stale-bases"
+        needs_input base "Ancestor branch $item_branch is missing $missing commit(s) from $comparison_branch. Which base should issue #$number use?" "$temporary_directory/stale-bases"
+      fi
+      previous_ref=$item_ref
+      comparison_branch=$item_branch
     fi
     previous_branch=$item_branch
     if [ "$item_number" -eq "$number" ]; then focused_branch=$item_branch; fi
@@ -402,6 +457,7 @@ checked_out_branch=$(git -C "$destination" branch --show-current 2>/dev/null || 
   exit 2
 }
 
+assign_issue
 if [ "$mode" = "resume" ]; then result=resumed; else result=started; fi
 printf 'Status: %s\n' "$result"
 printf 'Repository: %s\n' "$canonical_repository"
@@ -409,6 +465,7 @@ printf 'Issue: #%s %s\n' "$number" "$issue_title"
 printf 'Hierarchy: %s\n' "$hierarchy_text"
 printf 'Branch: %s\n' "$focused_branch"
 printf 'Worktree: %s\n' "$destination"
+printf 'Assignees: %s\n' "$assignment"
 printf 'Manager: %s\n' "$manager"
 [ -z "$worktree_id" ] || printf 'Supacode worktree ID: %s\n' "$worktree_id"
 sed -n '1p' "$project_output"
