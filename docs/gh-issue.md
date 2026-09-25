@@ -98,8 +98,9 @@ The start workflow handles these tasks:
 3. Use an established repository branch pattern when the evidence is clear.
 4. Create the necessary remote branch and local worktree when work does not
    exist.
-5. Set the configured GitHub Project status to `In Progress`.
-6. Stop before implementation starts.
+5. Assign the authenticated user when the issue has no assignee.
+6. Set the configured GitHub Project status to `In Progress`.
+7. Stop before implementation starts.
 
 One checked-in command performs the complete start or resume workflow. The
 agent does not coordinate separate GitHub, Git, Project, or worktree-manager
@@ -109,6 +110,11 @@ If required evidence conflicts, the command returns one structured question
 before it changes state. The skill asks that question and reruns the command
 with the selected branch, base, destination, or manager. It does not use more
 searches to guess the answer.
+
+Start preserves existing assignees and reports their names. Before branch
+creation, start checks whether each ancestor branch lacks commits from its
+higher branch. If an ancestor is behind or divergent, the command reports the
+missing commit count and requests a base.
 
 Use `resume` when a linked remote branch exists without a local worktree. The
 skill attaches that branch through the configured worktree manager.
@@ -126,6 +132,18 @@ The finish workflow reviews the issue branch, validates the intended changes,
 commits those changes, pushes the branch, and prepares a ready-for-review pull
 request. The pull request targets the resolved parent or stable branch and ends
 with `Closes #75`.
+
+Finish accepts uncommitted work and reports it separately from committed paths.
+The report includes staged changes, unstaged changes, and untracked files. The
+agent reviews these files before it commits the intended changes. Unresolved
+conflicts block finish. Uncommitted work prevents automatic issue closure,
+including when an earlier pull request merged.
+
+Finish fetches the base branch from origin before it computes the changed
+paths. The comparison uses the fetched remote branch. A local branch supplies
+the base only when origin has no branch with that name. A remote lookup or fetch
+failure blocks finish, so stale local references cannot hide a remote failure.
+Finish leaves the local base branch unchanged.
 
 The skill never merges the pull request. If the issue has no changes and no
 pull request, the workflow closes verified no-change work as completed.
@@ -255,6 +273,12 @@ machine configuration.
 
 An exact repository entry can override the worktree manager, worktree root, or
 templates for that repository.
+
+A repository can declare `taskBaseBranch` under its entry in `repositories`.
+Start uses this existing branch for tasks without direct children and omits
+intermediate ancestor branches. Finish uses the same base for new task pull
+requests. An explicit `--base` overrides the setting. An existing pull request
+keeps its base. Compound issues still use the ancestor hierarchy.
 
 ### GitHub Projects
 

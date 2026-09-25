@@ -6,6 +6,12 @@ query($owner: String!, $name: String!, $number: Int!) {
     }
     issue(number: $number) {
       ...StartIssue
+      assignees(first: 100) {
+        totalCount
+        nodes {
+          login
+        }
+      }
       subIssues {
         totalCount
       }

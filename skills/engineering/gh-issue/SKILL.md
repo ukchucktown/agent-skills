@@ -215,9 +215,12 @@ an explicit issue, run one command from a checkout of the target repository:
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The command resolves and validates the hierarchy, existing work, effective
 configuration, branch layout, destination, and worktree manager. It
-synchronizes configured Project status, creates or attaches the GitHub-linked
-branch and worktree, verifies the checked-out branch, and returns a compact
-result. Relay that result and stop before implementation.
+checks ancestor branches for missing commits and applies the optional repository
+task base from [the start configuration](references/start-config.md). It assigns
+the authenticated user when the issue has no assignee. It preserves and reports
+existing assignees. It synchronizes configured Project status and creates or
+attaches the GitHub-linked branch and worktree. It verifies the checked-out
+branch and returns a compact result. Relay that result and stop before implementation.
 
 Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`,
 `git`, or worktree-manager commands for start or resume. Do not delegate the
@@ -253,7 +256,9 @@ Run the finish command without opening, listing, or reconstructing it:
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The command resolves the worktree, branch, base, exact-head pull request,
-direct children, worktree state, and merge-base diff. It closes verified
+direct children, worktree state, and merge-base diff. It fetches the remote base
+branch for the comparison. It uses a local base only when the remote branch
+does not exist. A remote lookup or fetch failure blocks finish. It closes verified
 no-change work as completed. Relay a completed or blocked result and stop.
 If the command cannot resolve a parent base, ask one question and rerun it with
 the reported `--base BRANCH` option.
@@ -261,7 +266,12 @@ the reported `--base BRANCH` option.
 When the command reports changed paths, use its worktree, branch, base, and
 pull-request values for the rest of finish. Do not repeat its inspection.
 
+The result separates committed paths from uncommitted paths. Uncommitted paths
+use Git status codes and include staged, unstaged, and untracked files.
 Review every changed path and the complete diff in the selected worktree.
+Review the staged and unstaged diffs. Read untracked files before any commit.
+If the command reports unresolved conflicts, resolve those conflicts before
+another finish attempt.
 Separate intended issue work from unrelated changes. Use the validation commands
 named by loaded repository instructions or its immediately visible root task
 configuration. If the intended changes or required validation are ambiguous,

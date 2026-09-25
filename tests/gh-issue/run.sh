@@ -69,9 +69,22 @@ cat >"$config_file" <<'EOF'
   }
 }
 EOF
+export AGENT_SKILLS_CONFIG="$config_file"
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
 
+export REAL_GIT="$(command -v git)"
+cat >"$fake_bin/git" <<'GIT'
+#!/bin/sh
+if [ "$1" = remote ] && [ "$2" = get-url ]; then
+  printf 'https://github.com/example/agent-skills.git\n'
+else
+  exec "$REAL_GIT" "$@"
+fi
+GIT
+chmod +x "$fake_bin/git"
+remote=$temporary_directory/remote.git
+git init -q --bare "$remote"
 primary=$temporary_directory/repository
 issue_39=$temporary_directory/issue-39
 issue_40=$temporary_directory/issue-40
@@ -79,6 +92,7 @@ issue_40=$temporary_directory/issue-40
 git init -q -b main "$primary"
 git -C "$primary" config user.name Test
 git -C "$primary" config user.email test@example.com
+git -C "$primary" config "url.$remote.insteadOf" https://github.com/example/agent-skills.git
 git -C "$primary" remote add origin https://github.com/example/agent-skills.git
 printf 'base\n' >"$primary/base.txt"
 git -C "$primary" add base.txt
@@ -90,6 +104,7 @@ for path in one two three four five six seven; do
 done
 git -C "$primary" add .
 git -C "$primary" commit -q -m 'Advance main'
+git -C "$primary" push -qu origin main
 
 git -C "$primary" worktree add -q "$issue_39" feat/issue-39-prerequisite
 git -C "$primary" worktree add -q -b feat/issue-40-changed "$issue_40" main
@@ -132,6 +147,19 @@ changed_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
 printf '%s\n' "$changed_output" | grep -F 'Issue #40 has changes that require review and validation.' >/dev/null
 printf '%s\n' "$changed_output" | grep -F -- '- change.txt' >/dev/null
 [ ! -s "$call_log" ]
+
+# Both commands honor a repository's single task base.
+git -C "$primary" branch task-integration main
+jq '.repositories["example/agent-skills"].taskBaseBranch = "task-integration"' "$config_file" >"$config_file.next"
+mv "$config_file.next" "$config_file"
+configured_finish=$(cd "$primary" && PATH="$fake_bin:$PATH" \
+  GH_FIXTURE_DIRECTORY="$fixture_directory" GH_CALL_LOG="$call_log" \
+  "$finish_command" example/agent-skills 40)
+printf '%s\n' "$configured_finish" | grep -Fx 'Base: task-integration' >/dev/null
+explicit_finish=$(cd "$primary" && PATH="$fake_bin:$PATH" \
+  GH_FIXTURE_DIRECTORY="$fixture_directory" GH_CALL_LOG="$call_log" \
+  "$finish_command" --base main example/agent-skills 40)
+printf '%s\n' "$explicit_finish" | grep -Fx 'Base: main' >/dev/null
 
 shared_config_file=$temporary_directory/shared-config.json
 cat >"$shared_config_file" <<'EOF'
@@ -279,5 +307,7 @@ printf '%s\n' "$legacy_output" | grep -F 'Project statuses updated: 0' >/dev/nul
 "$repository_root/tests/gh-issue/cancel.sh"
 "$repository_root/tests/gh-issue/repository-clean.sh"
 "$repository_root/tests/gh-issue/start.sh"
+"$repository_root/tests/gh-issue/finish-worktree.sh"
+"$repository_root/tests/gh-issue/finish-remote.sh"
 
 printf 'gh-issue deterministic command tests passed\n'

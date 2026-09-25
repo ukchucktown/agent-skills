@@ -144,6 +144,14 @@ fi
 worktree_path=$(printf '%s' "$selected" | cut -f1)
 branch=$(printf '%s' "$selected" | cut -f2)
 
+dirty=$(git -C "$worktree_path" status --porcelain=v1 --untracked-files=all)
+conflicts=$(git -C "$worktree_path" diff --name-only --diff-filter=U --)
+if [ -n "$conflicts" ]; then
+  printf 'Issue #%s has unresolved conflicts in %s.\n' "$number" "$worktree_path" >&2
+  printf '%s\n' "$conflicts" >&2
+  exit 2
+fi
+
 pr_json=$(gh pr list \
   --repo "$canonical_repository" \
   --head "$branch" \
@@ -166,6 +174,11 @@ if [ "$pr_count" -eq 1 ]; then
   base_branch=$(printf '%s' "$pr_json" | jq -r '.[0].baseRefName')
 
   if [ "$pr_state" = "MERGED" ]; then
+    if [ -n "$dirty" ]; then
+      printf 'Issue #%s has uncommitted work after its pull request merged.\n' "$number" >&2
+      printf '%s\n' "$dirty" >&2
+      exit 2
+    fi
     if [ "$dry_run" = "true" ]; then
       printf 'Issue #%s would close as completed because %s is merged.\n' "$number" "$pr_url"
     else
@@ -200,6 +213,10 @@ if [ -z "$base_branch" ]; then
   if [ -n "$base_override" ]; then
     base_branch=$base_override
   else
+    config=$("$script_directory/start-config.sh" "$canonical_repository")
+    if [ "$child_total" -eq 0 ]; then
+      base_branch=$(printf '%s' "$config" | jq -r '.taskBaseBranch // empty')
+    fi
     parent_number=$(printf '%s' "$finish_json" | jq -r '.data.repository.issue.parent.number // empty')
   fi
   if [ -z "${parent_number:-}" ] && [ -z "$base_branch" ]; then
@@ -220,20 +237,28 @@ if [ -z "$base_branch" ]; then
   fi
 fi
 
-if git -C "$worktree_path" rev-parse --verify --quiet "${base_branch}^{commit}" >/dev/null; then
-  base_ref=$base_branch
-elif git -C "$worktree_path" rev-parse --verify --quiet "origin/${base_branch}^{commit}" >/dev/null; then
-  base_ref=origin/$base_branch
+git check-ref-format "refs/heads/$base_branch" >/dev/null || {
+  echo "finish.sh: invalid base branch $base_branch" >&2
+  exit 2
+}
+if git -C "$worktree_path" ls-remote --exit-code --heads origin "refs/heads/$base_branch" >"$temporary_directory/remote-base"; then
+  if ! git -C "$worktree_path" fetch --no-tags origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch"; then
+    echo "finish.sh: cannot fetch remote base branch $base_branch" >&2
+    exit 2
+  fi
+  base_ref=refs/remotes/origin/$base_branch
 else
-  echo "finish.sh: base branch $base_branch is unavailable in $worktree_path" >&2
-  exit 2
-fi
-
-dirty=$(git -C "$worktree_path" status --porcelain=v1)
-if [ -n "$dirty" ]; then
-  printf 'Issue #%s has uncommitted work in %s.\n' "$number" "$worktree_path" >&2
-  printf '%s\n' "$dirty" >&2
-  exit 2
+  remote_status=$?
+  if [ "$remote_status" -ne 2 ]; then
+    echo "finish.sh: cannot inspect remote base branch $base_branch" >&2
+    exit 2
+  fi
+  if git -C "$worktree_path" rev-parse --verify --quiet "refs/heads/${base_branch}^{commit}" >/dev/null; then
+    base_ref=refs/heads/$base_branch
+  else
+    echo "finish.sh: base branch $base_branch is unavailable in $worktree_path" >&2
+    exit 2
+  fi
 fi
 
 if git -C "$worktree_path" diff --quiet "${base_ref}...HEAD" --; then
@@ -247,7 +272,7 @@ else
   has_changes=true
 fi
 
-if [ "$has_changes" = "false" ]; then
+if [ "$has_changes" = "false" ] && [ -z "$dirty" ]; then
   if [ "$pr_state" = "OPEN" ]; then
     echo "finish.sh: open pull request $pr_url conflicts with a no-change branch" >&2
     exit 2
@@ -274,5 +299,12 @@ printf 'Branch: %s\n' "$branch"
 printf 'Base: %s\n' "$base_branch"
 printf 'Pull request: %s\n' "$pr_url"
 printf 'Changed paths:\n'
-printf '%s\n' "$changed_paths" | sed 's/^/- /'
+if [ -n "$changed_paths" ]; then
+  printf 'Committed paths:\n'
+  printf '%s\n' "$changed_paths" | sed 's/^/- /'
+fi
+if [ -n "$dirty" ]; then
+  printf 'Uncommitted paths (Git status):\n'
+  printf '%s\n' "$dirty"
+fi
 printf 'Next: review and validate these changes, then commit, push, and prepare the pull request.\n'

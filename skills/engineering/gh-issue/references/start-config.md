@@ -20,6 +20,7 @@
   },
   "repositories": {
     "OWNER/REPOSITORY": {
+      "taskBaseBranch": "initiative-delivery",
       "projectStatus": {
         "enabled": false
       }
@@ -52,6 +53,19 @@ It updates matching Projects only when the issue is already a Project item.
 
 An exact repository entry can also override `worktreeManager`, `worktreeRoot`,
 `integrationBranchTemplate`, `taskBranchTemplate`, or `worktreeTemplate`.
+
+`repositories["OWNER/REPOSITORY"].taskBaseBranch` declares one existing base
+branch for tasks in that repository. A task has no direct child issues. Start
+creates each task branch from this base without intermediate ancestor branches.
+Finish uses this base for a new task pull request. An explicit `--base` takes
+precedence over this setting. An existing pull request keeps its current base.
+Compound issues still use the ancestor hierarchy.
+
+Without a task base, start compares each existing ancestor branch with the
+next higher branch. The highest ancestor uses the default branch for this
+comparison. Start fetches origin before the comparison. If an ancestor lacks
+commits from the higher branch, start reports the gap and requests a base.
+This check also detects divergent branches. Start preserves the ancestor branches.
 
 Enabled repositories require GitHub CLI authentication with `read:project` and
 `project` scopes. Repositories without an effective enabled setting make no
