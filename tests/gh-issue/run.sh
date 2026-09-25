@@ -72,6 +72,18 @@ EOF
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
 
+export REAL_GIT="$(command -v git)"
+cat >"$fake_bin/git" <<'GIT'
+#!/bin/sh
+if [ "$1" = remote ] && [ "$2" = get-url ]; then
+  printf 'https://github.com/example/agent-skills.git\n'
+else
+  exec "$REAL_GIT" "$@"
+fi
+GIT
+chmod +x "$fake_bin/git"
+remote=$temporary_directory/remote.git
+git init -q --bare "$remote"
 primary=$temporary_directory/repository
 issue_39=$temporary_directory/issue-39
 issue_40=$temporary_directory/issue-40
@@ -79,6 +91,7 @@ issue_40=$temporary_directory/issue-40
 git init -q -b main "$primary"
 git -C "$primary" config user.name Test
 git -C "$primary" config user.email test@example.com
+git -C "$primary" config "url.$remote.insteadOf" https://github.com/example/agent-skills.git
 git -C "$primary" remote add origin https://github.com/example/agent-skills.git
 printf 'base\n' >"$primary/base.txt"
 git -C "$primary" add base.txt
@@ -90,6 +103,7 @@ for path in one two three four five six seven; do
 done
 git -C "$primary" add .
 git -C "$primary" commit -q -m 'Advance main'
+git -C "$primary" push -qu origin main
 
 git -C "$primary" worktree add -q "$issue_39" feat/issue-39-prerequisite
 git -C "$primary" worktree add -q -b feat/issue-40-changed "$issue_40" main
@@ -279,5 +293,6 @@ printf '%s\n' "$legacy_output" | grep -F 'Project statuses updated: 0' >/dev/nul
 "$repository_root/tests/gh-issue/cancel.sh"
 "$repository_root/tests/gh-issue/repository-clean.sh"
 "$repository_root/tests/gh-issue/start.sh"
+"$repository_root/tests/gh-issue/finish-remote.sh"
 
 printf 'gh-issue deterministic command tests passed\n'

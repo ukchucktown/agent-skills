@@ -220,13 +220,28 @@ if [ -z "$base_branch" ]; then
   fi
 fi
 
-if git -C "$worktree_path" rev-parse --verify --quiet "${base_branch}^{commit}" >/dev/null; then
-  base_ref=$base_branch
-elif git -C "$worktree_path" rev-parse --verify --quiet "origin/${base_branch}^{commit}" >/dev/null; then
-  base_ref=origin/$base_branch
-else
-  echo "finish.sh: base branch $base_branch is unavailable in $worktree_path" >&2
+git check-ref-format "refs/heads/$base_branch" >/dev/null || {
+  echo "finish.sh: invalid base branch $base_branch" >&2
   exit 2
+}
+if git -C "$worktree_path" ls-remote --exit-code --heads origin "refs/heads/$base_branch" >"$temporary_directory/remote-base"; then
+  if ! git -C "$worktree_path" fetch --no-tags origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch"; then
+    echo "finish.sh: cannot fetch remote base branch $base_branch" >&2
+    exit 2
+  fi
+  base_ref=refs/remotes/origin/$base_branch
+else
+  remote_status=$?
+  if [ "$remote_status" -ne 2 ]; then
+    echo "finish.sh: cannot inspect remote base branch $base_branch" >&2
+    exit 2
+  fi
+  if git -C "$worktree_path" rev-parse --verify --quiet "refs/heads/${base_branch}^{commit}" >/dev/null; then
+    base_ref=refs/heads/$base_branch
+  else
+    echo "finish.sh: base branch $base_branch is unavailable in $worktree_path" >&2
+    exit 2
+  fi
 fi
 
 dirty=$(git -C "$worktree_path" status --porcelain=v1)

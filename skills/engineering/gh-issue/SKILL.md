@@ -253,7 +253,9 @@ Run the finish command without opening, listing, or reconstructing it:
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The command resolves the worktree, branch, base, exact-head pull request,
-direct children, worktree state, and merge-base diff. It closes verified
+direct children, worktree state, and merge-base diff. It fetches the remote base
+branch for the comparison. It uses a local base only when the remote branch
+does not exist. A remote lookup or fetch failure blocks finish. It closes verified
 no-change work as completed. Relay a completed or blocked result and stop.
 If the command cannot resolve a parent base, ask one question and rerun it with
 the reported `--base BRANCH` option.
