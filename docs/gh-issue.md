@@ -139,6 +139,12 @@ agent reviews these files before it commits the intended changes. Unresolved
 conflicts block finish. Uncommitted work prevents automatic issue closure,
 including when an earlier pull request merged.
 
+Finish fetches the base branch from origin before it computes the changed
+paths. The comparison uses the fetched remote branch. A local branch supplies
+the base only when origin has no branch with that name. A remote lookup or fetch
+failure blocks finish, so stale local references cannot hide a remote failure.
+Finish leaves the local base branch unchanged.
+
 The skill never merges the pull request. If the issue has no changes and no
 pull request, the workflow closes verified no-change work as completed.
 
