@@ -13,6 +13,7 @@ implement changes, review pull requests, or merge pull requests.
 |---|---|
 | `status issue 75` | Show the issue state and recommend the next available work. |
 | `start issue 75` | Create or reuse the issue branch and worktree, then stop before implementation. |
+| `config` | Inspect or configure workflow settings and assigned-board mappings. |
 | `finish issue 75` | Validate, commit, push, and prepare an unmerged pull request. |
 | `clean issue 75` | Remove eligible artifacts from completed work after confirmation. |
 | `clean` | List residual repository branches and let you select cleanup candidates. |
@@ -99,7 +100,7 @@ The start workflow handles these tasks:
 4. Create the necessary remote branch and local worktree when work does not
    exist.
 5. Assign the authenticated user when the issue has no assignee.
-6. Set the configured GitHub Project status to `In Progress`.
+6. Apply the configured start values to assigned GitHub Project boards.
 7. Stop before implementation starts.
 
 One checked-in command performs the complete start or resume workflow. The
@@ -226,78 +227,28 @@ use.
 
 ## Configuration
 
-The skill reads optional machine settings from
-`~/.config/agent-skills/config.json`:
+The skill uses one local configuration file with global, organization, and
+repository tiers. More specific settings override broader settings. Explicit
+command options apply only to the current invocation.
 
-```json
-{
-  "schemaVersion": 1,
-  "worktreeManager": "auto",
-  "worktreeRoot": "/absolute/path/to/worktrees",
-  "integrationBranchTemplate": "integration/issue-{number}-{slug}",
-  "taskBranchTemplate": "feat/issue-{number}-{slug}",
-  "worktreeTemplate": "issue-{number}-{slug}",
-  "projectStatus": {
-    "enabled": true,
-    "owner": "OWNER",
-    "number": 2,
-    "field": "Status",
-    "startOption": "In Progress"
-  },
-  "repositories": {
-    "OWNER/REPOSITORY": {
-      "projectStatus": {
-        "enabled": false
-      }
-    }
-  }
-}
-```
+Use `gh-issue config` with a repository and an issue to discover that issue's
+assigned GitHub Project boards. The workflow displays field choices and current
+mappings. You can select start and completion values for each managed field or
+leave a board unmanaged. The workflow presents a preview before it saves changes.
 
-### Worktrees and branches
+Only boards assigned to the issue participate. A configured but unassigned board
+remains untouched. The skill does not add issues or ancestors to boards. Names
+use case-insensitive lookup, and updates use the resolved GitHub IDs. Ambiguous
+names require a choice.
 
-`worktreeManager` accepts `auto`, `supacode`, or `git`. The `auto` setting uses
-Supacode when Supacode contains the primary repository. Otherwise, the skill
-uses native Git.
+Start applies values after the workspace exists. Finish applies completion
+values after confirmed completion, including a previously completed issue with
+a stale board value. PR preparation does not trigger Done. GitHub automation
+handles completion outside a skill invocation. Read-only status reports any
+differences without a write.
 
-`worktreeRoot` contains one directory for each repository. If you omit this
-setting, the skill uses a `worktrees` directory beside the directory that
-contains the primary checkout.
-
-The branch and worktree templates accept `{number}` and `{slug}`. Existing
-issue branches and a clear repository pattern take precedence over the generic
-templates.
-
-Repository instructions and an explicit user choice take precedence over the
-machine configuration.
-
-An exact repository entry can override the worktree manager, worktree root, or
-templates for that repository.
-
-A repository can declare `taskBaseBranch` under its entry in `repositories`.
-Start uses this existing branch for tasks without direct children and omits
-intermediate ancestor branches. Finish uses the same base for new task pull
-requests. An explicit `--base` overrides the setting. An existing pull request
-keeps its base. Compound issues still use the ancestor hierarchy.
-
-### GitHub Projects
-
-The optional `projectStatus` setting connects the start workflow to one GitHub
-Project. The top-level setting applies only to repositories that have the
-configured owner. A repository entry can disable or override that default.
-
-The start workflow adds the focused issue and its open ancestors to the
-configured Project when necessary. It then sets the selected field to the
-configured start option. A GitHub Project workflow can set closed issues to
-`Done`.
-
-Project synchronization requires the `read:project` and `project` GitHub CLI
-scopes. If either scope is absent, run this command and complete the GitHub
-authentication flow:
-
-```text
-gh auth refresh -s read:project,project
-```
+The [configuration reference](../skills/engineering/gh-issue/references/start-config.md)
+defines the schema, precedence, command arguments, migration, and retry behavior.
 
 ## Safety model
 

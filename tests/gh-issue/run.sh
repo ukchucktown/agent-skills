@@ -4,8 +4,6 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 status_command=$repository_root/skills/engineering/gh-issue/scripts/status.sh
 finish_command=$repository_root/skills/engineering/gh-issue/scripts/finish.sh
-project_config_command=$repository_root/skills/engineering/gh-issue/scripts/project-config.sh
-project_start_command=$repository_root/skills/engineering/gh-issue/scripts/project-start.sh
 fixture_directory=$repository_root/tests/gh-issue/fixtures
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gh-issue-tests.XXXXXX")
@@ -38,15 +36,6 @@ case "${1:-}:${2:-}" in
   issue:close)
     printf '%s\n' "$*" >>"$GH_CALL_LOG"
     ;;
-  project:field-list)
-    printf '%s\n' "$*" >>"$GH_CALL_LOG"
-    cat <<'JSON'
-{"fields":[{"id":"status-field","name":"Status","type":"ProjectV2SingleSelectField","options":[{"id":"todo","name":"Todo"},{"id":"progress","name":"In Progress"},{"id":"done","name":"Done"}]}],"totalCount":1}
-JSON
-    ;;
-  project:item-add|project:item-edit)
-    printf '%s\n' "$*" >>"$GH_CALL_LOG"
-    ;;
   *)
     printf 'unexpected gh call: %s\n' "$*" >&2
     exit 70
@@ -56,19 +45,7 @@ EOF
 chmod +x "$fake_bin/gh"
 
 config_file=$temporary_directory/config.json
-cat >"$config_file" <<'EOF'
-{
-  "repositories": {
-    "example/agent-skills": {
-      "projectStatus": {
-        "enabled": true,
-        "field": "Status",
-        "startOption": "In Progress"
-      }
-    }
-  }
-}
-EOF
+printf '%s\n' '{"projectSync":{"enabled":false},"repositories":{}}' >"$config_file"
 export AGENT_SKILLS_CONFIG="$config_file"
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
@@ -121,7 +98,7 @@ status_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
 printf '%s\n' "$status_output" | grep -F 'State: OPEN' >/dev/null
 printf '%s\n' "$status_output" | grep -F 'Local worktrees:' >/dev/null
 printf '%s\n' "$status_output" | grep -F '[feat/issue-39-prerequisite]' >/dev/null
-printf '%s\n' "$status_output" | grep -F 'Project status: In Progress' >/dev/null
+printf '%s\n' "$status_output" | grep -F 'Project status: disabled' >/dev/null
 printf '%s\n' "$status_output" | grep -F 'Started: yes' >/dev/null
 printf '%s\n' "$status_output" | grep -F 'Next: continue or finish issue #39' >/dev/null
 
@@ -161,153 +138,13 @@ explicit_finish=$(cd "$primary" && PATH="$fake_bin:$PATH" \
   "$finish_command" --base main example/agent-skills 40)
 printf '%s\n' "$explicit_finish" | grep -Fx 'Base: main' >/dev/null
 
-shared_config_file=$temporary_directory/shared-config.json
-cat >"$shared_config_file" <<'EOF'
-{
-  "projectStatus": {
-    "enabled": true,
-    "owner": "example",
-    "number": 2,
-    "field": "Status",
-    "startOption": "In Progress"
-  },
-  "repositories": {}
-}
-EOF
-
-shared_config=$(AGENT_SKILLS_CONFIG="$shared_config_file" \
-  "$project_config_command" example/agent-skills)
-printf '%s' "$shared_config" | jq -e '
-  .enabled == true and .targeted == true and
-  .owner == "example" and .number == 2
-' >/dev/null
-
-shared_status_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
-  GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$shared_config_file" \
-  "$status_command" example/agent-skills 39)
-printf '%s\n' "$shared_status_output" | grep -F \
-  'Project status: not in project' >/dev/null
-
-external_config=$(AGENT_SKILLS_CONFIG="$shared_config_file" \
-  "$project_config_command" someone-else/repository)
-printf '%s' "$external_config" | jq -e '.enabled == false' >/dev/null
-
-disabled_config_file=$temporary_directory/disabled-config.json
-cat >"$disabled_config_file" <<'EOF'
-{
-  "projectStatus": {
-    "enabled": true,
-    "owner": "example",
-    "number": 2
-  },
-  "repositories": {
-    "example/agent-skills": {
-      "projectStatus": {
-        "enabled": false
-      }
-    }
-  }
-}
-EOF
-
-disabled_config=$(AGENT_SKILLS_CONFIG="$disabled_config_file" \
-  "$project_config_command" example/agent-skills)
-printf '%s' "$disabled_config" | jq -e \
-  '.enabled == false and .owner == "example" and .number == 2' >/dev/null
-
-override_config_file=$temporary_directory/override-config.json
-cat >"$override_config_file" <<'EOF'
-{
-  "projectStatus": {
-    "enabled": true,
-    "owner": "example",
-    "number": 2
-  },
-  "repositories": {
-    "someone-else/repository": {
-      "projectStatus": {
-        "enabled": true,
-        "owner": "example",
-        "number": 3,
-        "field": "Workflow",
-        "startOption": "Doing"
-      }
-    }
-  }
-}
-EOF
-
-override_config=$(AGENT_SKILLS_CONFIG="$override_config_file" \
-  "$project_config_command" someone-else/repository)
-printf '%s' "$override_config" | jq -e '
-  .enabled == true and .targeted == true and
-  .owner == "example" and .number == 3 and
-  .field == "Workflow" and .startOption == "Doing"
-' >/dev/null
-
-: >"$call_log"
-project_output=$(PATH="$fake_bin:$PATH" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
-  GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$shared_config_file" \
-  "$project_start_command" example/agent-skills 50)
-
-printf '%s\n' "$project_output" | grep -F \
-  'Focused issue was already In Progress: false' >/dev/null
-printf '%s\n' "$project_output" | grep -F 'Project items added: 1' >/dev/null
-printf '%s\n' "$project_output" | grep -F 'Project statuses updated: 2' >/dev/null
-
-field_line=$(grep -n '^project field-list ' "$call_log" | cut -d: -f1)
-add_line=$(grep -n '^project item-add .*issues/50' "$call_log" | cut -d: -f1)
-focus_edit_line=$(grep -n '^project item-edit .*issues/50' "$call_log" | cut -d: -f1)
-parent_edit_line=$(grep -n '^project item-edit .*issues/49' "$call_log" | cut -d: -f1)
-[ "$field_line" -lt "$add_line" ]
-[ "$add_line" -lt "$focus_edit_line" ]
-[ "$focus_edit_line" -lt "$parent_edit_line" ]
-if grep -F 'issues/48' "$call_log" >/dev/null; then
-  echo 'closed ancestor was updated' >&2
-  exit 1
-fi
-
-: >"$call_log"
-disabled_output=$(PATH="$fake_bin:$PATH" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
-  GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$disabled_config_file" \
-  "$project_start_command" example/agent-skills 50)
-printf '%s\n' "$disabled_output" | grep -F \
-  'Project status synchronization: disabled' >/dev/null
-[ ! -s "$call_log" ]
-
-: >"$call_log"
-external_output=$(PATH="$fake_bin:$PATH" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
-  GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$shared_config_file" \
-  "$project_start_command" someone-else/repository 50)
-printf '%s\n' "$external_output" | grep -F \
-  'Project status synchronization: disabled' >/dev/null
-[ ! -s "$call_log" ]
-
-: >"$call_log"
-legacy_output=$(PATH="$fake_bin:$PATH" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
-  GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$config_file" \
-  "$project_start_command" example/agent-skills 39)
-printf '%s\n' "$legacy_output" | grep -F \
-  'Focused issue was already In Progress: true' >/dev/null
-printf '%s\n' "$legacy_output" | grep -F 'Project items added: 0' >/dev/null
-printf '%s\n' "$legacy_output" | grep -F 'Project statuses updated: 0' >/dev/null
-[ ! -s "$call_log" ]
-
 "$repository_root/tests/gh-issue/clean.sh"
 "$repository_root/tests/gh-issue/cancel.sh"
 "$repository_root/tests/gh-issue/repository-clean.sh"
 "$repository_root/tests/gh-issue/start.sh"
 "$repository_root/tests/gh-issue/finish-worktree.sh"
 "$repository_root/tests/gh-issue/finish-remote.sh"
+
+python3 "$repository_root/tests/gh-issue/projects.py"
 
 printf 'gh-issue deterministic command tests passed\n'

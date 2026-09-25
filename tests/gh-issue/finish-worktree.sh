@@ -30,7 +30,7 @@ export PATH="$temporary_directory/bin:$PATH"
 export GH_FINISH_FIXTURE="$repository_root/tests/gh-issue/fixtures/finish-40.json"
 export GH_CALL_LOG="$temporary_directory/calls"
 export AGENT_SKILLS_CONFIG="$temporary_directory/config.json"
-printf '{}\n' >"$AGENT_SKILLS_CONFIG"
+printf '{"projectSync":{"enabled":false}}\n' >"$AGENT_SKILLS_CONFIG"
 : >"$GH_CALL_LOG"
 primary=$temporary_directory/primary
 worktree=$temporary_directory/issue-40
