@@ -2,7 +2,9 @@
 
 The skill uses one local file: `~/.config/agent-skills/config.json`.
 `AGENT_SKILLS_CONFIG` selects another file for isolated use. The commands require
-Python 3.9 or later, Git, GitHub CLI, and jq. Python uses its standard library.
+Node.js 22 or later, Git, GitHub CLI, and jq. The Node helper uses built-in modules.
+It requires no package installation or build step. The existing shell commands
+remain the public entry points.
 
 ## Inheritance
 

@@ -496,6 +496,54 @@ else:
         self.run_command('finish.sh','org/repo','1',decode=False)
         self.assertEqual(self.calls.read_bytes(),before)
 
+    def test_public_commands_do_not_require_a_python_runtime(self):
+        self.setup_repository()
+        sentinel = self.root / 'bin/python3'
+        sentinel.write_text('#!/bin/sh\nprintf "unexpected Python runtime call" >&2\nexit 70\n')
+        sentinel.chmod(0o755)
+        self.run_command('config.sh', 'org/repo')
+        self.run_command('start.sh', 'start', 'org/repo', '1', decode=False)
+        self.run_command('status.sh', 'org/repo', '1', decode=False)
+        self.run_command('finish.sh', 'org/repo', '1', decode=False)
+
+    def test_reserved_javascript_names_are_configuration_data(self):
+        mapping = self.mapping()
+        mapping['customSetting'] = {'__proto__': {'retained': True}, 'constructor': ['keep']}
+        data = self.github_issue()
+        data['data']['repository']['issue']['projectItems']['nodes'][0]['project']['fields']['nodes'][0]['name'] = '__proto__'
+        mapping['projectSync']['boards']['org/4']['fields'] = {'__proto__': {'start': 'In progress', 'complete': 'Done'}}
+        self.config.write_text(json.dumps(mapping))
+        self.fixture.write_text(json.dumps(data))
+        args = ['org/repo', '--issue', '1', '--set', '{"worktreeManager":"git"}']
+        preview = self.run_command('config.sh', *args)
+        self.run_command('config.sh', *args, '--confirm', preview['token'])
+        self.assertEqual(json.loads(self.config.read_text())['customSetting'], mapping['customSetting'])
+        result = self.run_command('project-transition.sh', 'start', 'org/repo', '1')
+        self.assertEqual([u['fieldId'] for u in result['updates']], ['field-4'])
+
+    def test_option_ids_remain_literal_process_arguments(self):
+        self.config.write_text(json.dumps(self.mapping()))
+        data = self.github_issue()
+        option_id = 'active; touch SHOULD_NOT_EXIST'
+        options = data['data']['repository']['issue']['projectItems']['nodes'][0]['project']['fields']['nodes'][0]['options']
+        next(option for option in options if option['id'] == 'active')['id'] = option_id
+        self.fixture.write_text(json.dumps(data))
+        self.run_command('project-transition.sh', 'start', 'org/repo', '1')
+        self.assertEqual(json.loads(self.calls.read_text().splitlines()[-1])[-1], option_id)
+        self.assertFalse((self.root / 'SHOULD_NOT_EXIST').exists())
+
+    def test_unicode_case_variants_keep_matching_after_runtime_change(self):
+        mapping = self.mapping()
+        mapping['projectSync']['boards']['org/4']['fields'] = {'STRASSE': {'start': 'ΟΣ', 'complete': 'Done'}}
+        data = self.github_issue()
+        field = data['data']['repository']['issue']['projectItems']['nodes'][0]['project']['fields']['nodes'][0]
+        field['name'] = 'Straße'
+        next(option for option in field['options'] if option['id'] == 'active')['name'] = 'ος'
+        self.config.write_text(json.dumps(mapping))
+        self.fixture.write_text(json.dumps(data))
+        result = self.run_command('project-transition.sh', 'start', 'org/repo', '1')
+        self.assertEqual(result['updates'][0]['optionId'], 'active')
+
 
 
 if __name__ == '__main__':

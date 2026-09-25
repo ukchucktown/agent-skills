@@ -283,3 +283,26 @@ The skill uses bounded GitHub queries and focused local inspection. It does not
 search every pull request, branch, worktree, or issue to increase confidence.
 When required evidence conflicts, it reports the conflict and waits for the
 user.
+
+## Development validation
+
+Run the isolated command suite from the repository root:
+
+```sh
+sh tests/gh-issue/run.sh
+```
+
+The test harness requires Python, but the installed skill uses Node.js and shell.
+The tests use temporary configuration and repositories with mocked GitHub calls.
+
+Measure helper startup and local configuration resolution:
+
+```sh
+node tests/gh-issue/benchmark-projects.mjs
+```
+
+The benchmark reports the median and 95th percentile of elapsed process time.
+It uses synthetic configuration and starts a new process for each sample.
+It measures no GitHub requests or worktree operations. Runtime versions and
+machine load affect the results. The optional `--python-baseline PATH` argument
+compares a saved copy of the previous helper with the same fixtures.
