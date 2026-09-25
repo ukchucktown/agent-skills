@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: finish.sh [--dry-run] [--base BRANCH] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: finish.sh [--dry-run] [--base BRANCH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -13,6 +13,12 @@ while [ "$#" -gt 0 ]; do
     --dry-run)
       dry_run=true
       shift
+      ;;
+    --project-override)
+      [ "$#" -ge 2 ] || usage
+      AGENT_SKILLS_PROJECT_OVERRIDE=$2
+      export AGENT_SKILLS_PROJECT_OVERRIDE
+      shift 2
       ;;
     --base)
       [ "$#" -ge 2 ] || usage
@@ -55,7 +61,22 @@ default_branch=$(printf '%s' "$finish_json" | jq -er '.data.repository.defaultBr
 child_total=$(printf '%s' "$finish_json" | jq -r '.data.repository.issue.subIssues.totalCount')
 child_loaded=$(printf '%s' "$finish_json" | jq -r '.data.repository.issue.subIssues.nodes | length')
 
+completion_preflight() {
+  "$script_directory/project-transition.sh" complete "$canonical_repository" "$number" --preflight
+}
+
+completion_reconcile() {
+  if [ "$dry_run" = "true" ]; then
+    "$script_directory/project-transition.sh" complete "$canonical_repository" "$number" --dry-run
+  else
+    "$script_directory/project-transition.sh" complete "$canonical_repository" "$number"
+  fi
+}
+
 if [ "$issue_state" != "OPEN" ]; then
+  if [ "$(printf '%s' "$finish_json" | jq -r '.data.repository.issue.stateReason')" = "COMPLETED" ]; then
+    completion_reconcile
+  fi
   printf 'Issue #%s is already %s: %s\n' "$number" "$issue_state" "$issue_url"
   exit 0
 fi
@@ -180,9 +201,12 @@ if [ "$pr_count" -eq 1 ]; then
       exit 2
     fi
     if [ "$dry_run" = "true" ]; then
+      completion_preflight
       printf 'Issue #%s would close as completed because %s is merged.\n' "$number" "$pr_url"
     else
+      completion_preflight
       gh issue close "$number" --repo "$canonical_repository" --reason completed >/dev/null
+      completion_reconcile
       printf 'Issue #%s closed as completed because %s is merged.\n' "$number" "$pr_url"
     fi
     exit 0
@@ -279,9 +303,12 @@ if [ "$has_changes" = "false" ] && [ -z "$dirty" ]; then
   fi
 
   if [ "$dry_run" = "true" ]; then
+    completion_preflight
     printf 'Issue #%s would close as completed.\n' "$number"
   else
+    completion_preflight
     gh issue close "$number" --repo "$canonical_repository" --reason completed >/dev/null
+    completion_reconcile
     printf 'Issue #%s closed as completed.\n' "$number"
   fi
   printf 'No commit, push, or pull request is necessary.\n'

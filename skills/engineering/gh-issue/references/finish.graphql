@@ -44,6 +44,7 @@ fragment IssueSummary on Issue {
   number
   title
   state
+  stateReason
   url
   labels(first: 20) {
     nodes {

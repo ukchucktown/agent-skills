@@ -1,6 +1,6 @@
 ---
 name: gh-issue
-description: Manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, clean completed or residual work, or cancel abandoned work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
+description: Configure GitHub issue workflows and manage existing GitHub issue work when the user explicitly asks to start or resume an issue, inspect workflow status or next work, prepare a pull request, clean completed or residual work, or cancel abandoned work. Ordinary issue discussion, issue creation, code review, direct closure, and merging are outside this skill.
 ---
 
 # GitHub issue workflow
@@ -14,7 +14,7 @@ plans, Git operations, GitHub operations, or worktree-manager operations. Keep
 each path bounded: do not recursively fetch every descendant, search the full
 pull-request inventory, or inspect unrelated branches and worktrees.
 
-The current implementation supports `status`, `start`, `resume`, `finish`,
+The current implementation supports `config`, `status`, `start`, `resume`, `finish`,
 `clean`, and `cancel`.
 
 Cleanup and cancellation commands emit each discovery result and detailed plan
@@ -30,7 +30,7 @@ is stale, put the refreshed detailed plan in one fenced `text` code block.
 
 <important if="the user naturally phrases an action instead of explicitly invoking gh-issue">
 
-Map only clear start, resume, status, finish, prepare-PR, clean, clean-up,
+Map only clear config, configure, start, resume, status, finish, prepare-PR, clean, clean-up,
 cancel, or abandon intent to this skill. A bare issue reference or a request to
 discuss, create, review, close, prioritize, or merge an issue is outside this
 workflow.
@@ -41,6 +41,34 @@ equivalent unambiguous imperatives as explicit authorization. An explicit
 `gh-issue` command is also authorization. If you must infer the issue or
 intended action, show the resolved issue and dry-run plan. Then request
 confirmation before mutation.
+
+</important>
+
+<important if="the user asks for config or configuration, or a workflow reports unresolved project mappings">
+
+Use [the configuration workflow](references/start-config.md). The public command
+is `config`. Resolve an omitted repository from the current checkout. Read the
+effective settings or discover the boards assigned to the
+specified issue with `config.sh`. Resolve only the choices in that result.
+Ask which fields and lifecycle values to manage, or whether a board should stay
+unmanaged. Ask for the save scope when the user did not specify it.
+
+One local file contains global, organization, and repository tiers. Narrower
+tiers override broader settings. Only assigned boards participate. Compare
+names without case sensitivity, then use the returned GitHub IDs. A configured
+board that is not assigned to the issue remains untouched.
+
+Prepare the `--set` preview at the selected scope. Present the proposed changes
+before the write. After the user accepts the preview, repeat the command with
+its exact `--confirm` token. If the token is stale, present the fresh preview.
+A config invocation changes configuration only, not board memberships or fields.
+
+When start reports missing mappings, complete this config workflow before another
+start attempt. A runtime field or option ambiguity requires an explicit selection
+from the returned candidates. Use an exact ID as described in the configuration
+reference. Keep the selector key when you override an inherited field.
+For a partial update failure, report the successful, failed, and pending fields.
+Retry the original workflow after the cause is resolved.
 
 </important>
 
@@ -218,15 +246,17 @@ configuration, branch layout, destination, and worktree manager. It
 checks ancestor branches for missing commits and applies the optional repository
 task base from [the start configuration](references/start-config.md). It assigns
 the authenticated user when the issue has no assignee. It preserves and reports
-existing assignees. It synchronizes configured Project status and creates or
-attaches the GitHub-linked branch and worktree. It verifies the checked-out
-branch and returns a compact result. Relay that result and stop before implementation.
+existing assignees. It validates project mappings before it creates or attaches
+the GitHub-linked branch and worktree. After workspace verification, it applies
+the configured start values to assigned boards and returns a compact result.
+Relay that result and stop before implementation.
 
 Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`,
 `git`, or worktree-manager commands for start or resume. Do not delegate the
 command to another agent.
 
-A conflict returns one JSON object with `status: needs_input`, a `field`, one
+A project mapping result uses the config workflow above. A branch or worktree
+conflict returns one JSON object with `status: needs_input`, a `field`, one
 `question`, and bounded `candidates`. Ask that exact question. Then rerun the
 same command once with the matching option:
 
@@ -259,7 +289,10 @@ The command resolves the worktree, branch, base, exact-head pull request,
 direct children, worktree state, and merge-base diff. It fetches the remote base
 branch for the comparison. It uses a local base only when the remote branch
 does not exist. A remote lookup or fetch failure blocks finish. It closes verified
-no-change work as completed. Relay a completed or blocked result and stop.
+no-change work as completed. It reconciles assigned-board completion values
+after confirmed completion, including issues that are already complete. A PR
+that is ready for review does not trigger Done. For a project setup result, use
+the config workflow above. Relay other completed or blocked results and stop.
 If the command cannot resolve a parent base, ask one question and rerun it with
 the reported `--base BRANCH` option.
 

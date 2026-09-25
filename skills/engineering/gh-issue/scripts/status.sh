@@ -2,10 +2,16 @@
 set -eu
 
 usage() {
-  echo "usage: status.sh OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: status.sh [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
+if [ "${1:-}" = "--project-override" ]; then
+  [ "$#" -ge 2 ] || usage
+  AGENT_SKILLS_PROJECT_OVERRIDE=$2
+  export AGENT_SKILLS_PROJECT_OVERRIDE
+  shift 2
+fi
 [ "$#" -eq 2 ] || usage
 
 repository=$1
@@ -71,62 +77,16 @@ else
   child_summary="$closed_children of $child_total closed"
 fi
 
-project_status="not configured"
 project_started=false
-if project_config=$("$script_directory/project-config.sh" "$canonical_repository" 2>&1); then
-  project_enabled=$(printf '%s' "$project_config" | jq -r '.enabled')
-  if [ "$project_enabled" = "true" ]; then
-    project_field=$(printf '%s' "$project_config" | jq -r '.field')
-    project_start_option=$(printf '%s' "$project_config" | jq -r '.startOption')
-    project_targeted=$(printf '%s' "$project_config" | jq -r '.targeted')
-    project_owner=$(printf '%s' "$project_config" | jq -r '.owner // ""')
-    project_number=$(printf '%s' "$project_config" | jq -r '.number // 0')
-
-    if project_json=$("$script_directory/query.sh" project-status "$canonical_repository" "$number" 2>&1); then
-      project_total=$(printf '%s' "$project_json" | jq -r '.data.repository.issue.projectItems.totalCount')
-      project_loaded=$(printf '%s' "$project_json" | jq -r '.data.repository.issue.projectItems.nodes | length')
-      if [ "$project_total" -ne "$project_loaded" ]; then
-        project_status="unavailable: GitHub truncated the Project item list"
-      else
-        project_status=$(printf '%s' "$project_json" | jq -r \
-          --arg field "$project_field" \
-          --arg owner "$project_owner" \
-          --argjson number "$project_number" \
-          --argjson targeted "$project_targeted" '
-          def matching_items:
-            [.data.repository.issue.projectItems.nodes[] |
-              select(($targeted | not) or
-                (.project.number == $number and
-                 ((.project.owner.login | ascii_downcase) == ($owner | ascii_downcase))))];
-          matching_items as $items |
-          [$items[].fieldValues.nodes[] |
-            select(.field.name == $field) |
-            .name] | unique as $values |
-          if $targeted and ($items | length) == 0 then "not in project"
-          elif ($values | length) == 0 then "no value"
-          else $values | join(", ") end
-        ')
-        if printf '%s' "$project_json" | jq -e \
-          --arg field "$project_field" \
-          --arg option "$project_start_option" \
-          --arg owner "$project_owner" \
-          --argjson number "$project_number" \
-          --argjson targeted "$project_targeted" '
-          any(.data.repository.issue.projectItems.nodes[];
-            (($targeted | not) or
-             (.project.number == $number and
-              ((.project.owner.login | ascii_downcase) == ($owner | ascii_downcase)))) and
-            any(.fieldValues.nodes[]; .field.name == $field and .name == $option))
-        ' >/dev/null; then
-          project_started=true
-        fi
-      fi
-    else
-      project_status="unavailable: $project_json"
-    fi
-  fi
+if project_json=$("$script_directory/project-transition.sh" status "$canonical_repository" "$number"); then
+  project_status=$(printf '%s' "$project_json" | jq -r '
+    if .status == "disabled" then "disabled"
+    elif (.updates | length) == 0 then "no managed assigned fields"
+    else [.updates[] | .board + ": " + .field + "=" + (.current // "unset") +
+      (if .status == "unchanged" then "" else " (expected " + .expected + ")" end)] | join(", ") end')
+  project_started=$(printf '%s' "$project_json" | jq -r 'any(.updates[]; .event == "start" and .status == "unchanged")')
 else
-  project_status="unavailable: $project_config"
+  project_status="needs attention: $project_json"
 fi
 
 local_worktrees=none

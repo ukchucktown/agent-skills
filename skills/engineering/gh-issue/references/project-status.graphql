@@ -3,12 +3,6 @@ query($owner: String!, $name: String!, $number: Int!) {
     nameWithOwner
     issue(number: $number) {
       ...ProjectIssue
-      subIssues(first: 100) {
-        totalCount
-        nodes {
-          ...ProjectIssue
-        }
-      }
       parent {
         ...ProjectIssue
         parent {
@@ -41,6 +35,8 @@ fragment ProjectIssue on Issue {
   number
   title
   state
+  stateReason
+  repository { nameWithOwner }
   url
   projectItems(first: 10) {
     totalCount

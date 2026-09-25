@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--manager auto|supacode|git] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--manager auto|supacode|git] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -120,13 +120,14 @@ selected_destination=
 selected_manager=
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --branch|--base|--destination|--manager)
+    --branch|--base|--destination|--manager|--project-override)
       [ "$#" -ge 2 ] || usage
       case "$1" in
         --branch) selected_branch=$2 ;;
         --base) selected_base=$2 ;;
         --destination) selected_destination=$2 ;;
         --manager) selected_manager=$2 ;;
+        --project-override) AGENT_SKILLS_PROJECT_OVERRIDE=$2; export AGENT_SKILLS_PROJECT_OVERRIDE ;;
       esac
       shift 2
       ;;
@@ -319,9 +320,33 @@ case "$configured_manager" in
     ;;
 esac
 
+project_output=$temporary_directory/project-output
+if ! "$script_directory/project-start.sh" --dry-run "$canonical_repository" "$number" >"$project_output"; then
+  cat "$project_output"
+  exit 2
+fi
+
+render_projects() {
+  jq -r '
+    "Project status synchronization: " + .status,
+    (.updates[] | "Project " + .board + " issue #" + (.issue | tostring) + ": " + .field + " → " + .expected + " [" + .status + "]")
+  ' "$project_output"
+}
+
+apply_projects() {
+  if ! "$script_directory/project-start.sh" "$canonical_repository" "$number" >"$project_output"; then
+    cat "$project_output"
+    exit 2
+  fi
+}
+
 hierarchy_text=$(jq -r 'reverse | map("#" + (.number | tostring) + " " + .title) | join(" > ")' "$hierarchy_file")
 if [ -n "$existing_worktree" ]; then
-  "$script_directory/project-start.sh" "$canonical_repository" "$number" >"$temporary_directory/project-output"
+  if [ "$(git -C "$existing_worktree" branch --show-current 2>/dev/null || true)" != "$focused_branch" ]; then
+    echo "start.sh: existing worktree verification failed for $existing_worktree" >&2
+    exit 2
+  fi
+  apply_projects
   assign_issue
   printf 'Assignees: %s\n' "$assignment"
   printf 'Status: existing_worktree\n'
@@ -330,12 +355,11 @@ if [ -n "$existing_worktree" ]; then
   printf 'Hierarchy: %s\n' "$hierarchy_text"
   printf 'Branch: %s\n' "$focused_branch"
   printf 'Worktree: %s\n' "$existing_worktree"
-  sed -n '1p' "$temporary_directory/project-output"
+  render_projects
   exit 0
 fi
 
 if [ -n "$focused_branch" ] && [ "$mode" = "start" ]; then
-  "$script_directory/project-start.sh" "$canonical_repository" "$number" >"$temporary_directory/project-output"
   assign_issue
   printf 'Assignees: %s\n' "$assignment"
   printf 'Status: already_started\n'
@@ -344,7 +368,7 @@ if [ -n "$focused_branch" ] && [ "$mode" = "start" ]; then
   printf 'Hierarchy: %s\n' "$hierarchy_text"
   printf 'Branch: %s\n' "$focused_branch"
   printf 'Worktree: none\n'
-  sed -n '1p' "$temporary_directory/project-output"
+  render_projects
   printf 'Next: resume issue #%s to attach its existing branch.\n' "$number"
   exit 0
 fi
@@ -406,17 +430,6 @@ if [ -z "$focused_branch" ]; then
   done <"$temporary_directory/hierarchy-lines"
 fi
 
-project_output=$temporary_directory/project-output
-"$script_directory/project-start.sh" "$canonical_repository" "$number" >"$project_output"
-focused_started=$(sed -n 's/^Focused issue was already .*: //p' "$project_output")
-if [ -z "$(sed -n '1p' "$focused_candidates")" ] && [ "$focused_started" = "true" ]; then
-  printf 'Status: blocked\n'
-  printf 'Repository: %s\n' "$canonical_repository"
-  printf 'Issue: #%s %s\n' "$number" "$issue_title"
-  printf 'Reason: the configured Project already marks this issue as started, but no matching branch or worktree is visible. Another contributor may own the work.\n'
-  exit 2
-fi
-
 while IFS="$(printf '\t')" read -r item_number item_branch item_base; do
   [ -n "$item_number" ] || continue
   gh issue develop "$item_number" --repo "$canonical_repository" --base "$item_base" --name "$item_branch" >/dev/null
@@ -458,6 +471,7 @@ checked_out_branch=$(git -C "$destination" branch --show-current 2>/dev/null || 
 }
 
 assign_issue
+apply_projects
 if [ "$mode" = "resume" ]; then result=resumed; else result=started; fi
 printf 'Status: %s\n' "$result"
 printf 'Repository: %s\n' "$canonical_repository"
@@ -468,4 +482,4 @@ printf 'Worktree: %s\n' "$destination"
 printf 'Assignees: %s\n' "$assignment"
 printf 'Manager: %s\n' "$manager"
 [ -z "$worktree_id" ] || printf 'Supacode worktree ID: %s\n' "$worktree_id"
-sed -n '1p' "$project_output"
+render_projects
