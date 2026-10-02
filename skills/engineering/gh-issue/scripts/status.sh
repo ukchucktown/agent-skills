@@ -92,6 +92,7 @@ fi
 local_worktrees=none
 local_started=false
 worktree_branches_json='[]'
+worktree_rows_json='[]'
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   current_remote=$(git remote get-url origin 2>/dev/null || true)
   case "$current_remote" in
@@ -128,9 +129,15 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       local_started=true
       local_worktrees=$(printf '%s\n' "$local_matches" | paste -sd ',' - | sed 's/,/, /g')
     fi
-    worktree_branches_json=$(git worktree list --porcelain |
-      awk '/^branch refs\/heads\// { print substr($0, 19) }' |
-      jq -Rnc '[inputs | select(length > 0)]')
+    worktree_rows_json=$(git worktree list --porcelain | awk '
+      function emit() {
+        if (path != "" && branch != "") print path "\t" branch
+      }
+      /^worktree / { emit(); path = substr($0, 10); branch = ""; next }
+      /^branch refs\/heads\// { branch = substr($0, 19); next }
+      END { emit() }
+    ' | jq -Rnc '[inputs | select(length > 0) | split("\t") | {path: .[0], branch: .[1]}]')
+    worktree_branches_json=$(printf '%s' "$worktree_rows_json" | jq -c '[.[].branch]')
   fi
 fi
 
@@ -162,6 +169,7 @@ ready_children_filter='
       number,
       title,
       depth: $depth,
+      linked: [.linkedBranches.nodes[].ref.name],
       compound: (.subIssues.totalCount > 0),
       started: (.subIssues.totalCount == 0 and started)
     }]
@@ -229,9 +237,60 @@ if [ "$issue_state" = "OPEN" ] && [ "$issue_type" = "compound" ] && [ "$child_lo
   fi
 fi
 
-skipped_summary=$(printf '%s' "$skipped_started" | jq -r '
-  if length == 0 then "none" else [.[] | "#\(.number) \(.title)"] | join(", ") end
-')
+plural() {
+  if [ "$1" -eq 1 ]; then printf '%s %s' "$1" "$2"; else printf '%s %ss' "$1" "$2"; fi
+}
+
+age_text() {
+  seconds=$(($(date +%s) - $1))
+  if [ "$seconds" -lt 60 ]; then
+    printf 'less than a minute ago'
+  elif [ "$seconds" -lt 3600 ]; then
+    printf '%s ago' "$(plural $((seconds / 60)) minute)"
+  elif [ "$seconds" -lt 86400 ]; then
+    printf '%s ago' "$(plural $((seconds / 3600)) hour)"
+  else
+    printf '%s ago' "$(plural $((seconds / 86400)) day)"
+  fi
+}
+
+# Each skipped issue shows the evidence that separates paused from active work.
+render_skipped() {
+  printf '%s' "$skipped_started" | jq -c '.[]' | while IFS= read -r entry; do
+    entry_number=$(printf '%s' "$entry" | jq -r '.number')
+    printf '%s\n' "- #$entry_number $(printf '%s' "$entry" | jq -r '.title')"
+    rows=$(printf '%s' "$worktree_rows_json" | jq -c --arg issue "$entry_number" '
+      .[] | select(.branch | test("(^|[-_/])" + $issue + "([-_/]|$)"))
+    ')
+    if [ -z "$rows" ]; then
+      printf '  Worktree: none (linked branch %s)\n' \
+        "$(printf '%s' "$entry" | jq -r 'if (.linked | length) == 0 then "unknown" else .linked | join(", ") end')"
+      continue
+    fi
+    printf '%s\n' "$rows" | while IFS= read -r row; do
+      row_path=$(printf '%s' "$row" | jq -r '.path')
+      row_branch=$(printf '%s' "$row" | jq -r '.branch')
+      printf '  Worktree: %s [%s]\n' "$row_path" "$row_branch"
+      if ! evidence=$("$script_directory/worktree-evidence.sh" "$row_path" "$row_branch" 2>/dev/null); then
+        printf '  Evidence: unavailable\n'
+        continue
+      fi
+      case "$(printf '%s' "$evidence" | jq -r '.supacode')" in
+        available) supacode_text="Supacode tabs $(printf '%s' "$evidence" | jq -r '.supacodeTabs'), " ;;
+        unavailable) supacode_text="Supacode unavailable, " ;;
+        untracked) supacode_text="not in Supacode, " ;;
+        *) supacode_text= ;;
+      esac
+      commit_count=$(printf '%s' "$evidence" | jq -r '.branchCommits')
+      commit_text="branch commits $commit_count"
+      if [ "$commit_count" -gt 0 ]; then
+        commit_text="$commit_text (last $(age_text "$(printf '%s' "$evidence" | jq -r '.lastCommitEpoch')"))"
+      fi
+      printf '  Evidence: %s%s, uncommitted changes %s\n' \
+        "$supacode_text" "$commit_text" "$(printf '%s' "$evidence" | jq -r '.uncommitted')"
+    done
+  done
+}
 
 if [ "$issue_state" != "OPEN" ]; then
   next_action="none"
@@ -268,5 +327,10 @@ printf 'Project status: %s\n' "$project_status"
 printf 'Started: %s\n' "$started"
 printf 'Recommendation: %s\n' "$recommendation"
 printf 'Recommendation reason: %s\n' "$recommendation_reason"
-printf 'Skipped as started: %s\n' "$skipped_summary"
 printf 'Next: %s\n' "$next_action"
+if [ "$(printf '%s' "$skipped_started" | jq 'length')" -eq 0 ]; then
+  printf 'Skipped as started: none\n'
+else
+  printf 'Skipped as started:\n'
+  render_skipped
+fi

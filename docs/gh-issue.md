@@ -83,9 +83,23 @@ For a compound issue, the status workflow recommends the first open, unblocked
 standalone issue that has no branch evidence. Branch evidence is a linked
 branch or a local worktree on a branch name that contains the issue number. The
 walk follows GitHub hierarchy order and tries the next sibling when a compound
-issue has no candidate. The `Skipped as started` line lists the started issues
-that the walk passed. The walk stops at the first candidate or after 25 issue
+issue has no candidate. The walk stops at the first candidate or after 25 issue
 queries.
+
+The `Skipped as started` block lists the started issues that the walk passed.
+The status workflow cannot tell paused work from active work, so the block
+shows the evidence and you decide. Each local worktree of a skipped issue has
+these items:
+
+- The worktree path and its branch.
+- The number of open Supacode tabs, when Supacode manages the worktree. The tab
+  of the current session does not count.
+- The number of branch commits that no other branch contains, and the age of
+  the last commit.
+- The number of uncommitted changes.
+
+An open Supacode tab alone does not prove active work. Supacode keeps a tab
+open after the work stops.
 
 If you omit the issue number, the skill presents a short list of recent open
 issues that you authored or that GitHub assigned to you. The skill waits for
