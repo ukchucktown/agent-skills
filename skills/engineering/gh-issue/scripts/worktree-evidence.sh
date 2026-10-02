@@ -3,11 +3,29 @@ set -eu
 
 # Collect read-only evidence about a local issue worktree. The output is one
 # JSON object. Supacode is "absent" without the CLI, "unavailable" when the CLI
-# fails, and "untracked" when Supacode does not manage the worktree.
+# fails, and "untracked" when Supacode does not manage the worktree. The
+# summary field is the shared text form for status and start.
 
 usage() {
   echo "usage: worktree-evidence.sh WORKTREE_PATH BRANCH" >&2
   exit 64
+}
+
+plural() {
+  if [ "$1" -eq 1 ]; then printf '%s %s' "$1" "$2"; else printf '%s %ss' "$1" "$2"; fi
+}
+
+age_text() {
+  seconds=$(($(date +%s) - $1))
+  if [ "$seconds" -lt 60 ]; then
+    printf 'less than a minute ago'
+  elif [ "$seconds" -lt 3600 ]; then
+    printf '%s ago' "$(plural $((seconds / 60)) minute)"
+  elif [ "$seconds" -lt 86400 ]; then
+    printf '%s ago' "$(plural $((seconds / 3600)) hour)"
+  else
+    printf '%s ago' "$(plural $((seconds / 86400)) day)"
+  fi
 }
 
 [ "$#" -eq 2 ] || usage
@@ -50,6 +68,18 @@ branch_commits=$(git -C "$worktree_path" rev-list --count HEAD --not \
   --exclude="$branch" --branches --exclude="*/$branch" --remotes)
 last_commit_epoch=$(git -C "$worktree_path" log -1 --format=%ct HEAD)
 
+case "$supacode_state" in
+  available) summary="Supacode tabs $supacode_tabs, " ;;
+  unavailable) summary="Supacode unavailable, " ;;
+  untracked) summary="not in Supacode, " ;;
+  *) summary= ;;
+esac
+summary="${summary}branch commits $branch_commits"
+if [ "$branch_commits" -gt 0 ]; then
+  summary="$summary (last $(age_text "$last_commit_epoch"))"
+fi
+summary="$summary, uncommitted changes $uncommitted"
+
 jq -cn \
   --arg path "$worktree_path" \
   --arg branch "$branch" \
@@ -58,6 +88,7 @@ jq -cn \
   --argjson branchCommits "$branch_commits" \
   --argjson lastCommitEpoch "$last_commit_epoch" \
   --argjson uncommitted "$uncommitted" \
+  --arg summary "$summary" \
   '{path: $path, branch: $branch, supacode: $supacode, supacodeTabs: $supacodeTabs,
     branchCommits: $branchCommits, lastCommitEpoch: $lastCommitEpoch,
-    uncommitted: $uncommitted}'
+    uncommitted: $uncommitted, summary: $summary}'

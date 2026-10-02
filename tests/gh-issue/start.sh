@@ -132,6 +132,18 @@ case "${1:-}:${2:-}" in
     "$REAL_GIT" -C "$START_PRIMARY" worktree add -q -b "$branch" --track "$location/$name" "$base"
     jq -nr --arg value "${location%/}/$name/" '$value | @uri'
     ;;
+  worktree:list)
+    "$REAL_GIT" -C "$START_PRIMARY" worktree list --porcelain |
+      awk '/^worktree / { print substr($0, 10) }' |
+      while IFS= read -r path; do
+        jq -nr --arg value "${path%/}/" '$value | @uri'
+      done
+    ;;
+  tab:list)
+    for tab in ${FAKE_SUPACODE_TABS:-}; do
+      printf '%s\n' "$tab"
+    done
+    ;;
   *)
     printf 'unexpected supacode call: %s\n' "$*" >&2
     exit 70
@@ -327,6 +339,53 @@ grep -F 'issue develop 107 --base initiative' "$call_log" >/dev/null
 : >"$call_log"
 run_start start --base main example/start 108 >/dev/null
 grep -F 'issue develop 108 --base main' "$call_log" >/dev/null
+
+# An existing worktree with no evidence of use attaches with no question.
+: >"$call_log"
+idle_output=$(run_start resume example/start 101)
+printf '%s\n' "$idle_output" | grep -F 'Status: existing_worktree' >/dev/null
+grep -F 'issue edit 101' "$call_log" >/dev/null
+
+# An open Supacode tab requires a confirmation before any change.
+export FAKE_SUPACODE_TABS=TAB-1
+: >"$call_log"
+if run_start resume example/start 101 >"$temporary_directory/in-use"; then exit 1; fi
+jq -e '
+  .status == "needs_input" and .field == "accept-in-use" and
+  (.question | contains("Supacode tabs 1")) and (.candidates | length) == 1
+' "$temporary_directory/in-use" >/dev/null
+[ ! -s "$call_log" ]
+in_use_path=$(jq -r '.candidates[0]' "$temporary_directory/in-use")
+[ "$(git -C "$in_use_path" branch --show-current)" = 'feat/issue-101-create-a-scripted-start-workflow' ]
+
+# A different path does not confirm the shown worktree.
+if run_start resume --accept-in-use "$temporary_directory/elsewhere" example/start 101 >"$temporary_directory/in-use-other"; then exit 1; fi
+jq -e '.field == "accept-in-use"' "$temporary_directory/in-use-other" >/dev/null
+[ ! -s "$call_log" ]
+
+# The shown path confirms the worktree for both start and resume.
+accepted_output=$(run_start start --accept-in-use "$in_use_path" example/start 101)
+printf '%s\n' "$accepted_output" | grep -F 'Status: existing_worktree' >/dev/null
+grep -F 'issue edit 101' "$call_log" >/dev/null
+
+# The tab of the current session does not count.
+: >"$call_log"
+SUPACODE_WORKTREE_ID=$(jq -nr --arg value "${in_use_path%/}/" '$value | @uri')
+SUPACODE_TAB_ID=tab-1
+export SUPACODE_WORKTREE_ID SUPACODE_TAB_ID
+own_tab_output=$(run_start resume example/start 101)
+printf '%s\n' "$own_tab_output" | grep -F 'Status: existing_worktree' >/dev/null
+unset FAKE_SUPACODE_TABS SUPACODE_WORKTREE_ID SUPACODE_TAB_ID
+
+# Uncommitted changes also require a confirmation.
+printf 'draft\n' >"$in_use_path/draft.txt"
+: >"$call_log"
+if run_start resume example/start 101 >"$temporary_directory/in-use-draft"; then exit 1; fi
+jq -e '
+  .field == "accept-in-use" and (.question | contains("uncommitted changes 1"))
+' "$temporary_directory/in-use-draft" >/dev/null
+[ ! -s "$call_log" ]
+rm "$in_use_path/draft.txt"
 
 # Existing assignments remain unchanged on both start and resume.
 printf '%s\n' "$existing_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null

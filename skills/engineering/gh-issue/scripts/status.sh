@@ -237,23 +237,6 @@ if [ "$issue_state" = "OPEN" ] && [ "$issue_type" = "compound" ] && [ "$child_lo
   fi
 fi
 
-plural() {
-  if [ "$1" -eq 1 ]; then printf '%s %s' "$1" "$2"; else printf '%s %ss' "$1" "$2"; fi
-}
-
-age_text() {
-  seconds=$(($(date +%s) - $1))
-  if [ "$seconds" -lt 60 ]; then
-    printf 'less than a minute ago'
-  elif [ "$seconds" -lt 3600 ]; then
-    printf '%s ago' "$(plural $((seconds / 60)) minute)"
-  elif [ "$seconds" -lt 86400 ]; then
-    printf '%s ago' "$(plural $((seconds / 3600)) hour)"
-  else
-    printf '%s ago' "$(plural $((seconds / 86400)) day)"
-  fi
-}
-
 # Each skipped issue shows the evidence that separates paused from active work.
 render_skipped() {
   printf '%s' "$skipped_started" | jq -c '.[]' | while IFS= read -r entry; do
@@ -275,19 +258,7 @@ render_skipped() {
         printf '  Evidence: unavailable\n'
         continue
       fi
-      case "$(printf '%s' "$evidence" | jq -r '.supacode')" in
-        available) supacode_text="Supacode tabs $(printf '%s' "$evidence" | jq -r '.supacodeTabs'), " ;;
-        unavailable) supacode_text="Supacode unavailable, " ;;
-        untracked) supacode_text="not in Supacode, " ;;
-        *) supacode_text= ;;
-      esac
-      commit_count=$(printf '%s' "$evidence" | jq -r '.branchCommits')
-      commit_text="branch commits $commit_count"
-      if [ "$commit_count" -gt 0 ]; then
-        commit_text="$commit_text (last $(age_text "$(printf '%s' "$evidence" | jq -r '.lastCommitEpoch')"))"
-      fi
-      printf '  Evidence: %s%s, uncommitted changes %s\n' \
-        "$supacode_text" "$commit_text" "$(printf '%s' "$evidence" | jq -r '.uncommitted')"
+      printf '  Evidence: %s\n' "$(printf '%s' "$evidence" | jq -r '.summary')"
     done
   done
 }

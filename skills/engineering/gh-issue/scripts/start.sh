@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--manager auto|supacode|git] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--manager auto|supacode|git] [--accept-in-use PATH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -118,15 +118,17 @@ selected_branch=
 selected_base=
 selected_destination=
 selected_manager=
+accepted_in_use=
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --branch|--base|--destination|--manager|--project-override)
+    --branch|--base|--destination|--manager|--accept-in-use|--project-override)
       [ "$#" -ge 2 ] || usage
       case "$1" in
         --branch) selected_branch=$2 ;;
         --base) selected_base=$2 ;;
         --destination) selected_destination=$2 ;;
         --manager) selected_manager=$2 ;;
+        --accept-in-use) accepted_in_use=$2 ;;
         --project-override) AGENT_SKILLS_PROJECT_OVERRIDE=$2; export AGENT_SKILLS_PROJECT_OVERRIDE ;;
       esac
       shift 2
@@ -345,6 +347,16 @@ if [ -n "$existing_worktree" ]; then
   if [ "$(git -C "$existing_worktree" branch --show-current 2>/dev/null || true)" != "$focused_branch" ]; then
     echo "start.sh: existing worktree verification failed for $existing_worktree" >&2
     exit 2
+  fi
+  # Another session can work in the same worktree. Ask before attaching it.
+  if ! evidence=$("$script_directory/worktree-evidence.sh" "$existing_worktree" "$focused_branch"); then
+    echo "start.sh: worktree evidence failed for $existing_worktree" >&2
+    exit 2
+  fi
+  if printf '%s' "$evidence" | jq -e '(.supacodeTabs // 0) > 0 or .uncommitted > 0' >/dev/null &&
+    [ "${accepted_in_use%/}" != "${existing_worktree%/}" ]; then
+    printf '%s\n' "$existing_worktree" >"$temporary_directory/in-use"
+    needs_input accept-in-use "Worktree $existing_worktree for issue #$number looks in use: $(printf '%s' "$evidence" | jq -r '.summary'). Another session can work in it. Attach it anyway?" "$temporary_directory/in-use"
   fi
   apply_projects
   assign_issue
