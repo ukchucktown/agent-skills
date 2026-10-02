@@ -376,7 +376,9 @@ status without branch evidence can represent another contributor's work, so
 exclude that issue from recommendations. Recommend the first open, unblocked
 standalone issue with no branch evidence in GitHub hierarchy order. Descend
 through compound issues as needed. When a compound issue has no candidate,
-continue with its next sibling. Report the started issues that the walk skipped.
+continue with its next sibling. Report the started issues that the walk skipped,
+with their worktree evidence. Do not classify a skipped issue as paused or
+active. An open Supacode tab stays open after work stops, so the user decides.
 Explain the evidence and wait for the user to choose or override it.
 
 </important>

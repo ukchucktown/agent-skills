@@ -67,6 +67,31 @@ jq -n --argjson number "$number" --slurpfile tree "$GH_TREE" '
 EOF
 chmod +x "$fake_bin/gh"
 
+# The fake supacode tracks every Git worktree of the fixture repository. The
+# issue-221 worktree has two tabs. FAKE_SUPACODE_DOWN simulates a failed CLI.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+set -eu
+[ -z "${FAKE_SUPACODE_DOWN:-}" ] || exit 1
+case "${1:-}:${2:-}" in
+  worktree:list)
+    git -C "$FAKE_PRIMARY" worktree list --porcelain |
+      awk '/^worktree / { print substr($0, 10) "/" }' |
+      jq -Rr '@uri'
+    ;;
+  tab:list)
+    case "$4" in
+      *issue-221*) printf '%s\n' AAAA0000-0000-0000-0000-000000000001 AAAA0000-0000-0000-0000-000000000002 ;;
+    esac
+    ;;
+  *)
+    printf 'unexpected supacode call: %s\n' "$*" >&2
+    exit 70
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/supacode"
+
 tree=$temporary_directory/tree.json
 jq -n '
   {
@@ -107,6 +132,13 @@ printf 'base\n' >"$primary/base.txt"
 git -C "$primary" add base.txt
 git -C "$primary" commit -q -m 'Initial state'
 git -C "$primary" worktree add -q -b feat/issue-221-local "$temporary_directory/issue-221" main
+printf 'committed\n' >"$temporary_directory/issue-221/committed.txt"
+git -C "$temporary_directory/issue-221" add committed.txt
+git -C "$temporary_directory/issue-221" commit -q -m 'Add issue 221 work'
+printf 'draft\n' >"$temporary_directory/issue-221/draft.txt"
+issue_221_path=$(git -C "$primary" worktree list --porcelain |
+  awk '/^worktree .*issue-221$/ { print substr($0, 10) }')
+issue_221_id=$(jq -nr --arg value "$issue_221_path/" '$value | @uri')
 git -C "$primary" worktree add -q -b feat/issue-2410-unrelated "$temporary_directory/issue-2410" main
 
 run_status() {
@@ -114,6 +146,7 @@ run_status() {
   (cd "$primary" && PATH="$fake_bin:$PATH" \
     GH_TREE="$tree" \
     GH_CALL_LOG="$call_log" \
+    FAKE_PRIMARY="$primary" \
     AGENT_SKILLS_CONFIG="$config_file" \
     "$status_command" example/status "$1")
 }
@@ -130,7 +163,12 @@ expect_line() {
 output=$(run_status 200)
 expect_line "$output" 'Recommendation: #241 Ready task'
 expect_line "$output" 'Recommendation reason: first open unblocked standalone issue with no branch evidence'
-expect_line "$output" 'Skipped as started: #211 Linked task, #221 Local task'
+expect_line "$output" 'Skipped as started:'
+expect_line "$output" '- #211 Linked task'
+expect_line "$output" '  Worktree: none (linked branch feat/issue-211-linked)'
+expect_line "$output" '- #221 Local task'
+expect_line "$output" "  Worktree: $issue_221_path [feat/issue-221-local]"
+expect_line "$output" '  Evidence: Supacode tabs 2, branch commits 1 (last less than a minute ago), uncommitted changes 1'
 expect_line "$output" 'Next: start issue #241'
 queried=$(paste -sd ' ' "$call_log")
 [ "$queried" = "200 210 220 223 240" ] || {
@@ -138,11 +176,21 @@ queried=$(paste -sd ' ' "$call_log")
   exit 1
 }
 
+# A tab of the current Supacode session does not count as another session.
+output=$(SUPACODE_WORKTREE_ID="$issue_221_id" \
+  SUPACODE_TAB_ID=aaaa0000-0000-0000-0000-000000000001 run_status 200)
+expect_line "$output" '  Evidence: Supacode tabs 1, branch commits 1 (last less than a minute ago), uncommitted changes 1'
+
+# A failed Supacode CLI does not hide the Git evidence.
+output=$(FAKE_SUPACODE_DOWN=1 run_status 200)
+expect_line "$output" '  Evidence: Supacode unavailable, branch commits 1 (last less than a minute ago), uncommitted changes 1'
+
 # When every ready standalone issue is started, the walk recommends nothing.
 output=$(run_status 300)
 expect_line "$output" 'Recommendation: none'
 expect_line "$output" 'Recommendation reason: every open unblocked standalone descendant is already started'
-expect_line "$output" 'Skipped as started: #301 First started task, #303 Second started task'
+expect_line "$output" '- #301 First started task'
+expect_line "$output" '- #303 Second started task'
 expect_line "$output" 'Next: continue or unblock the open child work'
 
 # The walk stops at its query limit instead of a full hierarchy traversal.
