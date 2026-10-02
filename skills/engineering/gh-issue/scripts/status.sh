@@ -91,6 +91,7 @@ fi
 
 local_worktrees=none
 local_started=false
+worktree_branches_json='[]'
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   current_remote=$(git remote get-url origin 2>/dev/null || true)
   case "$current_remote" in
@@ -127,6 +128,9 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       local_started=true
       local_worktrees=$(printf '%s\n' "$local_matches" | paste -sd ',' - | sed 's/,/, /g')
     fi
+    worktree_branches_json=$(git worktree list --porcelain |
+      awk '/^branch refs\/heads\// { print substr($0, 19) }' |
+      jq -Rnc '[inputs | select(length > 0)]')
   fi
 fi
 
@@ -137,71 +141,109 @@ else
 fi
 
 recommendation="none"
+recommendation_number=
 recommendation_reason="none"
-recommended_started=false
+walk_stop=
+skipped_started='[]'
+walk_query_limit=25
+walk_depth_limit=8
+
+# Ready children are open and unblocked. A standalone child with a linked
+# branch or a local worktree branch that contains its number is started work.
+ready_children_filter='
+  def started:
+    (.number | tostring) as $issue |
+    .linkedBranches.totalCount > 0 or
+    any($branches[]; test("(^|[-_/])" + $issue + "([-_/]|$)"));
+  [.data.repository.issue.subIssues.nodes[] |
+    select(.state == "OPEN") |
+    select([.blockedBy.nodes[] | select(.state == "OPEN")] | length == 0) |
+    {
+      number,
+      title,
+      depth: $depth,
+      compound: (.subIssues.totalCount > 0),
+      started: (.subIssues.totalCount == 0 and started)
+    }]
+'
 
 if [ "$issue_state" = "OPEN" ] && [ "$issue_type" = "compound" ] && [ "$child_loaded" -eq "$child_total" ]; then
-  cursor_json=$status_json
-  depth=0
-  while [ "$depth" -lt 8 ]; do
-    candidate=$(printf '%s' "$cursor_json" | jq -c '
-      [.data.repository.issue.subIssues.nodes[] |
-        select(.state == "OPEN") |
-        select([.blockedBy.nodes[] | select(.state == "OPEN")] | length == 0)] as $ready |
-      ([$ready[] | select(.subIssues.totalCount == 0 and .linkedBranches.totalCount > 0)][0] // $ready[0] // null)
-    ')
-    if [ "$candidate" = "null" ]; then
-      if [ "$depth" -gt 0 ]; then
-        recommendation=none
-        recommendation_reason="no open unblocked standalone descendant"
-        recommended_started=false
+  pending=$(printf '%s' "$status_json" | jq -c \
+    --argjson depth 1 --argjson branches "$worktree_branches_json" \
+    "$ready_children_filter")
+  walk_queries=0
+  while :; do
+    entry=$(printf '%s' "$pending" | jq -c '.[0] // empty')
+    [ -n "$entry" ] || break
+    pending=$(printf '%s' "$pending" | jq -c '.[1:]')
+    entry_number=$(printf '%s' "$entry" | jq -r '.number')
+
+    if [ "$(printf '%s' "$entry" | jq -r '.compound')" = "false" ]; then
+      if [ "$(printf '%s' "$entry" | jq -r '.started')" = "true" ]; then
+        skipped_started=$(printf '%s' "$skipped_started" | jq -c --argjson entry "$entry" '. + [$entry]')
+        continue
       fi
+      recommendation_number=$entry_number
+      recommendation="#${entry_number} $(printf '%s' "$entry" | jq -r '.title')"
+      recommendation_reason="first open unblocked standalone issue with no branch evidence"
       break
     fi
 
-    recommendation_number=$(printf '%s' "$candidate" | jq -r '.number')
-    recommendation_title=$(printf '%s' "$candidate" | jq -r '.title')
-    recommendation="#${recommendation_number} ${recommendation_title}"
-    if [ "$(printf '%s' "$candidate" | jq -r '.linkedBranches.totalCount')" -gt 0 ]; then
-      recommended_started=true
-      recommendation_reason="already started and unblocked"
-    else
-      recommended_started=false
-      recommendation_reason="first open unblocked child"
+    entry_depth=$(printf '%s' "$entry" | jq -r '.depth')
+    if [ "$entry_depth" -ge "$walk_depth_limit" ]; then
+      walk_stop="unavailable because the hierarchy below #$entry_number is deeper than $walk_depth_limit levels"
+      break
     fi
+    if [ "$walk_queries" -ge "$walk_query_limit" ]; then
+      walk_stop="unavailable because the walk reached its limit of $walk_query_limit issue queries"
+      break
+    fi
+    walk_queries=$((walk_queries + 1))
 
-    candidate_children=$(printf '%s' "$candidate" | jq -r '.subIssues.totalCount')
-    [ "$candidate_children" -gt 0 ] || break
-
-    cursor_json=$("$script_directory/query.sh" status "$canonical_repository" "$recommendation_number")
+    cursor_json=$("$script_directory/query.sh" status "$canonical_repository" "$entry_number")
     cursor_issue=$(printf '%s' "$cursor_json" | jq -r '.data.repository.issue != null')
     [ "$cursor_issue" = "true" ] || {
-      recommendation_reason="unavailable after GitHub returned incomplete hierarchy data"
+      walk_stop="unavailable after GitHub returned incomplete hierarchy data"
       break
     }
     cursor_total=$(printf '%s' "$cursor_json" | jq -r '.data.repository.issue.subIssues.totalCount')
     cursor_loaded=$(printf '%s' "$cursor_json" | jq -r '.data.repository.issue.subIssues.nodes | length')
     [ "$cursor_total" -eq "$cursor_loaded" ] || {
-      recommendation_reason="unavailable because GitHub truncated the child list"
+      walk_stop="unavailable because GitHub truncated the child list of #$entry_number"
       break
     }
-    depth=$((depth + 1))
+    children=$(printf '%s' "$cursor_json" | jq -c \
+      --argjson depth "$((entry_depth + 1))" --argjson branches "$worktree_branches_json" \
+      "$ready_children_filter")
+    pending=$(jq -nc --argjson children "$children" --argjson pending "$pending" '$children + $pending')
   done
+
+  if [ -n "$walk_stop" ]; then
+    recommendation_reason=$walk_stop
+  elif [ -z "$recommendation_number" ]; then
+    if [ "$(printf '%s' "$skipped_started" | jq 'length')" -gt 0 ]; then
+      recommendation_reason="every open unblocked standalone descendant is already started"
+    else
+      recommendation_reason="no open unblocked standalone descendant"
+    fi
+  fi
 fi
+
+skipped_summary=$(printf '%s' "$skipped_started" | jq -r '
+  if length == 0 then "none" else [.[] | "#\(.number) \(.title)"] | join(", ") end
+')
 
 if [ "$issue_state" != "OPEN" ]; then
   next_action="none"
 elif [ "$active_blocker_count" -gt 0 ]; then
   next_action="resolve the active blocker"
 elif [ "$issue_type" = "compound" ]; then
-  if [ "$recommendation" != "none" ]; then
-    if [ "$recommended_started" = "true" ]; then
-      next_action="continue issue #$recommendation_number"
-    else
-      next_action="start issue #$recommendation_number"
-    fi
+  if [ -n "$recommendation_number" ]; then
+    next_action="start issue #$recommendation_number"
   elif [ "$child_loaded" -ne "$child_total" ]; then
     next_action="inspect the truncated child list"
+  elif [ -n "$walk_stop" ]; then
+    next_action="inspect the descendant hierarchy"
   elif [ "$open_child_count" -gt 0 ]; then
     next_action="continue or unblock the open child work"
   else
@@ -226,4 +268,5 @@ printf 'Project status: %s\n' "$project_status"
 printf 'Started: %s\n' "$started"
 printf 'Recommendation: %s\n' "$recommendation"
 printf 'Recommendation reason: %s\n' "$recommendation_reason"
+printf 'Skipped as started: %s\n' "$skipped_summary"
 printf 'Next: %s\n' "$next_action"

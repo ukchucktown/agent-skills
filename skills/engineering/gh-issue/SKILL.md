@@ -369,11 +369,14 @@ ordinary status.
 
 <important if="the workflow recommends another issue">
 
-Prefer an unfinished standalone issue with matching linked or local work.
-Project status without branch evidence can represent another contributor's
-work, so exclude that issue from recommendations. Otherwise recommend the first
-open, unblocked standalone issue in GitHub hierarchy order, descending through
-compound issues as needed. Explain the evidence and wait for the user to choose
-or override it.
+Never recommend a standalone issue that already has branch evidence. Branch
+evidence is a linked branch or a local worktree on a branch name that contains
+the issue number. Another session or contributor can own that work. Project
+status without branch evidence can represent another contributor's work, so
+exclude that issue from recommendations. Recommend the first open, unblocked
+standalone issue with no branch evidence in GitHub hierarchy order. Descend
+through compound issues as needed. When a compound issue has no candidate,
+continue with its next sibling. Report the started issues that the walk skipped.
+Explain the evidence and wait for the user to choose or override it.
 
 </important>
