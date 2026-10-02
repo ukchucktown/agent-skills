@@ -265,7 +265,14 @@ same command once with the matching option:
 --base BRANCH
 --destination PATH
 --manager auto|supacode|git
+--accept-in-use PATH
 ```
+
+The `accept-in-use` question comes before `start` or `resume` attaches an
+existing worktree that looks in use. The worktree has an open Supacode tab or
+uncommitted changes, and another session can work in it. The tab of the current
+session does not count. Rerun with the shown path only when the user confirms.
+If the user does not confirm, stop.
 
 Do not investigate beyond the command result. Other nonzero results are
 blocked outcomes. Relay the command's result. Do not reconstruct the workflow.

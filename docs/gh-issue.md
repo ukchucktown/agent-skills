@@ -131,8 +131,8 @@ calls and does not delegate this deterministic work to another agent.
 
 If required evidence conflicts, the command returns one structured question
 before it changes state. The skill asks that question and reruns the command
-with the selected branch, base, destination, or manager. It does not use more
-searches to guess the answer.
+with the selected branch, base, destination, manager, or confirmed worktree
+path. It does not use more searches to guess the answer.
 
 Start preserves existing assignees and reports their names. Before branch
 creation, start checks whether each ancestor branch lacks commits from its
@@ -141,6 +141,18 @@ missing commit count and requests a base.
 
 Use `resume` when a linked remote branch exists without a local worktree. The
 skill attaches that branch through the configured worktree manager.
+
+Before `start` or `resume` attaches an existing worktree, the command collects
+the same evidence as the status workflow. The worktree looks in use when it has
+an open Supacode tab or uncommitted changes. The tab of the current session does
+not count. If the worktree looks in use, the command makes no change and asks
+you to confirm. The question shows the path and the evidence. After you
+confirm, the skill reruns the command with `--accept-in-use PATH`. The path
+must be the path that the question shows. A worktree that does not look in use
+attaches with no question.
+
+Supacode keeps a tab open after work stops. For this reason, Supacode users can
+see this question for a worktree that no session uses.
 
 ### Finish
 
