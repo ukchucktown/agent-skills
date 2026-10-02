@@ -79,6 +79,14 @@ The status workflow reads the issue hierarchy, blockers, configured GitHub
 Project status, and bounded branch evidence. It does not change local or remote
 state.
 
+For a compound issue, the status workflow recommends the first open, unblocked
+standalone issue that has no branch evidence. Branch evidence is a linked
+branch or a local worktree on a branch name that contains the issue number. The
+walk follows GitHub hierarchy order and tries the next sibling when a compound
+issue has no candidate. The `Skipped as started` line lists the started issues
+that the walk passed. The walk stops at the first candidate or after 25 issue
+queries.
+
 If you omit the issue number, the skill presents a short list of recent open
 issues that you authored or that GitHub assigned to you. The skill waits for
 you to select an issue.
