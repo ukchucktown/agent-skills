@@ -1,0 +1,147 @@
+{
+  "repository": "example/agent-skills",
+  "defaultBranch": "main",
+  "openPullRequests": [
+    {
+      "number": 64,
+      "headRefName": "feat/issue-64-open-pr"
+    }
+  ],
+  "issues": [
+    {
+      "number": 60,
+      "title": "Completed effort",
+      "state": "CLOSED",
+      "parent": null,
+      "linked": [
+        "feat/issue-60-root"
+      ]
+    },
+    {
+      "number": 61,
+      "title": "Merged child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-61-child"
+      ]
+    },
+    {
+      "number": 62,
+      "title": "Dirty child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-62-dirty"
+      ]
+    },
+    {
+      "number": 63,
+      "title": "Unmerged child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-63-unmerged"
+      ]
+    },
+    {
+      "number": 64,
+      "title": "Open pull request child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-64-open-pr"
+      ]
+    },
+    {
+      "number": 65,
+      "title": "Protected child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-65-protected"
+      ]
+    },
+    {
+      "number": 66,
+      "title": "Active child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": [
+        "feat/issue-66-active"
+      ]
+    },
+    {
+      "number": 67,
+      "title": "Open effort",
+      "state": "OPEN",
+      "parent": null,
+      "linked": [
+        "feat/issue-67-open-effort"
+      ]
+    },
+    {
+      "number": 68,
+      "title": "Merged task in an open effort",
+      "state": "CLOSED",
+      "parent": 67,
+      "linked": [
+        "feat/issue-68-merged-task"
+      ]
+    },
+    {
+      "number": 70,
+      "title": "Local-only effort",
+      "state": "CLOSED",
+      "parent": null,
+      "linked": [
+        "feat/issue-70-local-only"
+      ]
+    },
+    {
+      "number": 71,
+      "title": "Effort on a stable branch",
+      "state": "OPEN",
+      "parent": null,
+      "linked": []
+    },
+    {
+      "number": 72,
+      "title": "Task merged into the stable branch",
+      "state": "CLOSED",
+      "parent": 71,
+      "linked": [
+        "feat/issue-72-stable-task"
+      ]
+    },
+    {
+      "number": 73,
+      "title": "Task under a parent in another repository",
+      "state": "CLOSED",
+      "parent": {
+        "repository": "other/project",
+        "number": 60
+      },
+      "linked": [
+        "feat/issue-73-foreign-parent"
+      ]
+    },
+    {
+      "number": 75,
+      "title": "Port 62 fixes",
+      "state": "OPEN",
+      "parent": null,
+      "linked": [
+        "feat/issue-75-port-62-fixes"
+      ]
+    },
+    {
+      "repository": "other/project",
+      "number": 60,
+      "title": "Effort in another repository",
+      "state": "CLOSED",
+      "parent": null,
+      "linked": []
+    }
+  ]
+}

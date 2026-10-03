@@ -473,4 +473,31 @@ for branch in feat/protected feat/open-pr feat/locked; do
   "$real_git" -C "$primary" show-ref --verify --quiet "refs/heads/$branch"
   "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"
 done
+# The stable branch is the branch of the primary checkout. The default branch
+# stays blocked when another worktree uses it.
+default_worktree=$temporary_directory/default
+develop_task_worktree=$temporary_directory/develop-task
+"$real_git" -C "$primary" switch -q -c develop
+"$real_git" -C "$primary" worktree add -q "$default_worktree" main
+"$real_git" -C "$primary" worktree add -q -b feat/develop-task "$develop_task_worktree" develop
+printf 'develop task\n' >"$develop_task_worktree/develop-task.txt"
+"$real_git" -C "$develop_task_worktree" add develop-task.txt
+"$real_git" -C "$develop_task_worktree" commit -q -m 'Add develop task'
+"$real_git" -C "$primary" merge -q --no-ff feat/develop-task -m 'Merge develop task'
+"$real_git" -C "$primary" push -q origin develop feat/develop-task
+default_worktree=$("$real_git" -C "$default_worktree" rev-parse --show-toplevel)
+
+stable_output=$(cd "$primary" && run_clean example/agent-skills)
+printf '%s\n' "$stable_output" | grep -F 'Stable branch: develop at ' >/dev/null
+printf '%s\n' "$stable_output" | grep -E '^[0-9]+\. feat/develop-task$' >/dev/null
+printf '%s\n' "$stable_output" | grep -F -A 2 -- '- main' |
+  grep -F 'Reason: default branch cannot be selected' >/dev/null
+if default_output=$(cd "$primary" && run_clean --select main example/agent-skills 2>&1); then
+  echo 'repository cleanup accepted the default branch' >&2
+  exit 1
+fi
+printf '%s\n' "$default_output" | grep -F \
+  'branch main cannot be selected: default branch cannot be selected' >/dev/null
+[ -d "$default_worktree" ]
+
 printf 'gh-issue repository clean command tests passed\n'

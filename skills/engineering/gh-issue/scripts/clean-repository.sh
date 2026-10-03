@@ -112,7 +112,7 @@ if ! canonical_repository=$(printf '%s' "$repository_json" | jq -er '
   echo "clean.sh: GitHub returned incomplete repository cleanup data" >&2
   exit 2
 fi
-stable_branch=$(printf '%s' "$repository_json" | jq -er '.data.repository.defaultBranchRef.name')
+default_branch=$(printf '%s' "$repository_json" | jq -er '.data.repository.defaultBranchRef.name')
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "clean.sh: run this command from the primary checkout of $canonical_repository" >&2
@@ -139,10 +139,16 @@ git worktree list --porcelain >"$worktrees_file"
 primary_checkout=$(awk '/^worktree / { print substr($0, 10); exit }' "$worktrees_file")
 current_checkout=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
-[ "$current_checkout" = "$primary_checkout" ] && [ "$current_branch" = "$stable_branch" ] || {
-  echo "clean.sh: run this command from the primary checkout on $stable_branch" >&2
+[ "$current_checkout" = "$primary_checkout" ] || {
+  echo "clean.sh: run this command from the primary checkout of $canonical_repository" >&2
   exit 2
 }
+# The stable branch is the branch that the primary checkout stays on.
+[ -n "$current_branch" ] || {
+  echo "clean.sh: the primary checkout has no current branch" >&2
+  exit 2
+}
+stable_branch=$current_branch
 [ -z "$(git status --porcelain=v1)" ] || {
   echo "clean.sh: the primary checkout has uncommitted changes" >&2
   exit 2
@@ -238,7 +244,8 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
     remote_protected=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$remote_branches")
     open_pr=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $3; exit }' "$open_prs")
 
-    [ "$branch" != "$stable_branch" ] || reason="default branch cannot be selected"
+    [ "$branch" != "$stable_branch" ] || reason="stable branch cannot be selected"
+    [ "$branch" != "$default_branch" ] || reason="default branch cannot be selected"
     if [ "$remote_protected" = "true" ]; then
       reason="remote branch is protected"
     elif [ -n "$open_pr" ]; then
@@ -296,7 +303,8 @@ branch_names=$temporary_directory/branch-names
 {
   cut -f1 "$local_branches"
   cut -f1 "$remote_branches"
-} | awk -v stable="$stable_branch" 'NF && $0 != stable' | LC_ALL=C sort -u >"$branch_names"
+} | awk -v stable="$stable_branch" -v default_branch="$default_branch" \
+  'NF && $0 != stable && $0 != default_branch' | LC_ALL=C sort -u >"$branch_names"
 
 while IFS= read -r branch; do
   [ -n "$branch" ] || continue

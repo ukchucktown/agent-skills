@@ -93,6 +93,7 @@ hash_plan() {
 }
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+references=$script_directory/../references
 if ! root_json=$("$script_directory/query.sh" clean-root "$repository" "$number" 2>&1); then
   printf '%s: cannot resolve issue #%s\n%s\n' "$command_name" "$number" "$root_json" >&2
   exit 2
@@ -105,57 +106,60 @@ issue_exists=$(printf '%s' "$root_json" | jq -r '.data.repository.issue != null'
 }
 
 canonical_repository=$(printf '%s' "$root_json" | jq -er '.data.repository.nameWithOwner')
-root_issue=$(printf '%s' "$root_json" | jq -ce '
-  def hierarchy:
-    [.] + (if (.parent? | type) == "object" then (.parent | hierarchy) else [] end);
-  (.data.repository.issue | hierarchy) as $hierarchy |
-  if any($hierarchy[]; (.state // "") == "") then
-    error("GitHub truncated the parent hierarchy")
-  else $hierarchy[-1] end
-') || {
-  echo "$command_name: GitHub returned an incomplete parent hierarchy" >&2
-  exit 2
-}
-root_number=$(printf '%s' "$root_issue" | jq -r '.number')
-root_title=$(printf '%s' "$root_issue" | jq -r '.title')
+owner=${canonical_repository%%/*}
+name=${canonical_repository#*/}
+default_branch=$(printf '%s' "$root_json" | jq -er '.data.repository.defaultBranchRef.name')
 
-if ! tree_json=$("$script_directory/query.sh" clean-tree "$canonical_repository" "$root_number" 2>&1); then
-  printf '%s: cannot resolve the issue tree rooted at #%s\n%s\n' "$command_name" "$root_number" "$tree_json" >&2
-  exit 2
+# Cancel abandons the whole top-level effort. Clean covers the issue and its
+# sub-issues only, so it can run while the effort stays open.
+root_number=$number
+root_title=$(printf '%s' "$root_json" | jq -r '.data.repository.issue.title')
+if [ "$operation" = "cancel" ]; then
+  # Cancel closes issues by number in this repository, so the hierarchy must
+  # stay in this repository.
+  foreign_issue=$(printf '%s' "$root_json" | jq -r --arg repository "$canonical_repository" '
+    def hierarchy:
+      [.] + (if (.parent? | type) == "object" then (.parent | hierarchy) else [] end);
+    [.data.repository.issue | hierarchy | .[] |
+      select(.repository != null and .repository.nameWithOwner != $repository)] |
+    first // empty | "\(.repository.nameWithOwner)#\(.number)"
+  ')
+  [ -z "$foreign_issue" ] || {
+    echo "$command_name: cancel works in one repository, but the parents of #$number include $foreign_issue" >&2
+    exit 2
+  }
+  root_issue=$(printf '%s' "$root_json" | jq -ce '
+    def hierarchy:
+      [.] + (if (.parent? | type) == "object" then (.parent | hierarchy) else [] end);
+    (.data.repository.issue | hierarchy) as $hierarchy |
+    if any($hierarchy[]; (.state // "") == "") then
+      error("GitHub truncated the parent hierarchy")
+    else $hierarchy[-1] end
+  ') || {
+    echo "$command_name: GitHub returned an incomplete parent hierarchy" >&2
+    exit 2
+  }
+  root_number=$(printf '%s' "$root_issue" | jq -r '.number')
+  root_title=$(printf '%s' "$root_issue" | jq -r '.title')
 fi
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gh-issue-clean.XXXXXX")
 trap 'find "$temporary_directory" -type f -delete 2>/dev/null || true; rmdir "$temporary_directory" 2>/dev/null || true' EXIT HUP INT TERM
 
-issues_file=$temporary_directory/issues.json
-if ! printf '%s' "$tree_json" | jq -ce '
-  def descendants:
-    [.] + (((.subIssues.nodes? // []) | map(descendants) | add) // []);
-  (.data.repository.issue | descendants) as $issues |
-  if .data.repository.issue == null then
-    error("root issue not found")
-  elif .data.repository.openPullRequests.totalCount >
-       (.data.repository.openPullRequests.nodes | length) then
-    error("GitHub truncated the open pull request list")
-  elif any($issues[];
-    .subIssues.totalCount > ((.subIssues.nodes? // []) | length)) then
-    error("GitHub truncated the issue tree")
-  elif any($issues[];
-    .linkedBranches.totalCount > (.linkedBranches.nodes | length)) then
-    error("GitHub truncated a linked branch list")
-  else $issues end
-' >"$issues_file"; then
-  echo "$command_name: GitHub returned incomplete cleanup data" >&2
+if ! repository_json=$(gh api graphql \
+  -F "owner=$owner" \
+  -F "name=$name" \
+  -F "query=@$references/clean-repository.graphql" 2>&1); then
+  printf '%s: cannot read the open pull requests\n%s\n' "$command_name" "$repository_json" >&2
   exit 2
 fi
-
-open_issues=$(jq -r '[.[] | select(.state == "OPEN") | "#\(.number) \(.title)"] | join(", ")' "$issues_file")
-if [ "$operation" = "clean" ] && [ -n "$open_issues" ]; then
-  echo "$command_name: the top-level effort still has open issues: $open_issues" >&2
+printf '%s' "$repository_json" | jq -e '
+  .data.repository.openPullRequests.totalCount <=
+  (.data.repository.openPullRequests.nodes | length)
+' >/dev/null || {
+  echo "$command_name: GitHub truncated the open pull request list" >&2
   exit 2
-fi
-
-stable_branch=$(printf '%s' "$tree_json" | jq -er '.data.repository.defaultBranchRef.name')
+}
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "$command_name: run this command from the primary checkout of $canonical_repository" >&2
@@ -180,10 +184,16 @@ git worktree list --porcelain >"$worktrees_file"
 primary_checkout=$(awk '/^worktree / { print substr($0, 10); exit }' "$worktrees_file")
 current_checkout=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
-[ "$current_checkout" = "$primary_checkout" ] && [ "$current_branch" = "$stable_branch" ] || {
-  echo "$command_name: run this command from the primary checkout on $stable_branch" >&2
+[ "$current_checkout" = "$primary_checkout" ] || {
+  echo "$command_name: run this command from the primary checkout of $canonical_repository" >&2
   exit 2
 }
+# The stable branch is the branch that the primary checkout stays on.
+[ -n "$current_branch" ] || {
+  echo "$command_name: the primary checkout has no current branch" >&2
+  exit 2
+}
+stable_branch=$current_branch
 [ -z "$(git status --porcelain=v1)" ] || {
   echo "$command_name: the primary checkout has uncommitted changes" >&2
   exit 2
@@ -222,91 +232,209 @@ awk '
   END { emit() }
 ' "$worktrees_file" >"$worktree_rows"
 
-issue_numbers=$temporary_directory/issue-numbers
-jq -r '.[].number' "$issues_file" >"$issue_numbers"
-numbers_pattern=$(paste -sd '|' "$issue_numbers")
-
-linked_branches=$temporary_directory/linked-branches
-jq -r --arg repository "$canonical_repository" '
-  .[] | .linkedBranches.nodes[] |
-  select(.ref.repository.nameWithOwner == $repository) |
-  .ref.name
-' "$issues_file" | sort -u >"$linked_branches"
-
+# Clean and cancel never remove the stable branch or the default branch.
 all_branches=$temporary_directory/all-branches
 {
   cut -f1 "$local_branches"
   cut -f1 "$remote_branches"
-} | sort -u >"$all_branches"
-
-candidate_branches=$temporary_directory/candidate-branches
-: >"$candidate_branches"
-while IFS= read -r branch; do
-  [ "$branch" != "$stable_branch" ] || continue
-  if grep -Fqx "$branch" "$linked_branches" ||
-     printf '%s\n' "$branch" | grep -Eq "(^|[-_/])(${numbers_pattern})([-_/]|$)"; then
-    printf '%s\n' "$branch" >>"$candidate_branches"
-  fi
-done <"$all_branches"
+} | awk -v stable="$stable_branch" -v default_branch="$default_branch" \
+  'NF && $0 != stable && $0 != default_branch' | sort -u >"$all_branches"
 
 open_prs=$temporary_directory/open-prs
-printf '%s' "$tree_json" | jq -r '
+printf '%s' "$repository_json" | jq -r '
   .data.repository.openPullRequests.nodes[] |
   [.headRefName, (.number | tostring), .url] | @tsv
 ' >"$open_prs"
 
-root_linked_branches=$temporary_directory/root-linked-branches
-jq -r --arg repository "$canonical_repository" '
-  .[0].linkedBranches.nodes[] |
-  select(.ref.repository.nameWithOwner == $repository) |
-  .ref.name
-' "$issues_file" | sort -u >"$root_linked_branches"
+issues_file=$temporary_directory/issues.json
+candidate_branches=$temporary_directory/candidate-branches
+branch_issues=$temporary_directory/branch-issues
+: >"$candidate_branches"
+: >"$branch_issues"
 
-root_candidates=$temporary_directory/root-candidates
-: >"$root_candidates"
-while IFS= read -r branch; do
-  if grep -Fqx "$branch" "$root_linked_branches" ||
-     printf '%s\n' "$branch" | grep -Eq "(^|[-_/])${root_number}([-_/]|$)"; then
-    printf '%s\n' "$branch" >>"$root_candidates"
-  fi
-done <"$candidate_branches"
-
-candidate_count=$(wc -l <"$candidate_branches" | tr -d ' ')
-root_candidate_count=$(wc -l <"$root_candidates" | tr -d ' ')
-if [ "$operation" = "clean" ] && [ "$candidate_count" -gt 0 ] && [ "$root_candidate_count" -eq 0 ]; then
-  echo "$command_name: cannot verify that top-level effort #$root_number reached $stable_branch" >&2
-  exit 2
-fi
-
-if [ "$operation" = "clean" ] && [ "$root_candidate_count" -gt 0 ]; then
-  root_reached_stable=false
-  while IFS= read -r branch; do
-    [ -n "$branch" ] || continue
-    if awk -F '\t' -v branch="$branch" '$1 == branch { found = 1 } END { exit !found }' "$open_prs"; then
+if [ "$operation" = "cancel" ]; then
+  # Cancel must close open issues that have no branch, so it reads the full
+  # tree. Each sub-issue list is read page by page until it is complete.
+  tree_lines=$temporary_directory/tree-lines
+  pending=$temporary_directory/pending
+  visited=$temporary_directory/visited
+  : >"$tree_lines"
+  : >"$visited"
+  printf '%s\n' "$root_number" >"$pending"
+  root_recorded=false
+  while [ -s "$pending" ]; do
+    parent=$(sed -n '1p' "$pending")
+    sed '1d' "$pending" >"$pending.next"
+    mv "$pending.next" "$pending"
+    if grep -Fqx "$parent" "$visited"; then
       continue
     fi
-    local_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$local_branches")
-    remote_oid=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2; exit }' "$remote_branches")
-    if [ -n "$local_oid" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
-      continue
-    fi
-    branch_oid=$local_oid
-    [ -n "$branch_oid" ] || branch_oid=$remote_oid
-    if git cat-file -e "${branch_oid}^{commit}" 2>/dev/null &&
-       git merge-base --is-ancestor "$branch_oid" "$stable_oid" 2>/dev/null; then
-      root_reached_stable=true
-      break
-    fi
-    if merged_prs=$(gh pr list --repo "$canonical_repository" --head "$branch" --state merged --limit 2 --json url,headRefOid 2>/dev/null) &&
-       printf '%s' "$merged_prs" | jq -e --arg oid "$branch_oid" 'any(.[]; .headRefOid == $oid)' >/dev/null; then
-      root_reached_stable=true
-      break
-    fi
-  done <"$root_candidates"
-  [ "$root_reached_stable" = "true" ] || {
-    echo "$command_name: top-level effort #$root_number has not reached $stable_branch" >&2
+    printf '%s\n' "$parent" >>"$visited"
+    cursor=
+    fetched=0
+    while :; do
+      if [ -n "$cursor" ]; then
+        page=$(gh api graphql -F "owner=$owner" -F "name=$name" -F "number=$parent" \
+          -f "after=$cursor" -F "query=@$references/clean-subissues.graphql" 2>&1) || {
+          printf '%s: cannot read the sub-issues of #%s\n%s\n' "$command_name" "$parent" "$page" >&2
+          exit 2
+        }
+      else
+        page=$(gh api graphql -F "owner=$owner" -F "name=$name" -F "number=$parent" \
+          -F "query=@$references/clean-subissues.graphql" 2>&1) || {
+          printf '%s: cannot read the sub-issues of #%s\n%s\n' "$command_name" "$parent" "$page" >&2
+          exit 2
+        }
+      fi
+      printf '%s' "$page" | jq -e '.data.repository.issue.subIssues.nodes | type == "array"' >/dev/null 2>&1 || {
+        echo "$command_name: cannot read the sub-issues of #$parent" >&2
+        exit 2
+      }
+      foreign_issue=$(printf '%s' "$page" | jq -r --arg repository "$canonical_repository" '
+        [.data.repository.issue.subIssues.nodes[] |
+          select(.repository.nameWithOwner != $repository)] |
+        first // empty | "\(.repository.nameWithOwner)#\(.number)"
+      ')
+      [ -z "$foreign_issue" ] || {
+        echo "$command_name: cancel works in one repository, but #$parent has the sub-issue $foreign_issue" >&2
+        exit 2
+      }
+      if [ "$root_recorded" = "false" ]; then
+        printf '%s' "$page" | jq -c '.data.repository.issue | del(.subIssues)' >>"$tree_lines"
+        root_recorded=true
+      fi
+      printf '%s' "$page" | jq -c '.data.repository.issue.subIssues.nodes[] | del(.subIssues)' >>"$tree_lines"
+      printf '%s' "$page" | jq -r '
+        .data.repository.issue.subIssues.nodes[] | select(.subIssues.totalCount > 0) | .number
+      ' >>"$pending"
+      fetched=$((fetched + $(printf '%s' "$page" | jq '.data.repository.issue.subIssues.nodes | length')))
+      [ "$(printf '%s' "$page" | jq -r '.data.repository.issue.subIssues.pageInfo.hasNextPage')" = "true" ] || break
+      cursor=$(printf '%s' "$page" | jq -r '.data.repository.issue.subIssues.pageInfo.endCursor // empty')
+      [ -n "$cursor" ] || {
+        echo "$command_name: GitHub returned no cursor for the next sub-issues of #$parent" >&2
+        exit 2
+      }
+    done
+    expected=$(printf '%s' "$page" | jq '.data.repository.issue.subIssues.totalCount')
+    [ "$fetched" -eq "$expected" ] || {
+      echo "$command_name: GitHub returned $fetched of $expected sub-issues of #$parent" >&2
+      exit 2
+    }
+  done
+  jq -s '.' "$tree_lines" >"$issues_file"
+  jq -e 'all(.[]; .linkedBranches.totalCount <= (.linkedBranches.nodes | length))' \
+    "$issues_file" >/dev/null || {
+    echo "$command_name: GitHub truncated a linked branch list" >&2
     exit 2
   }
+
+  issue_numbers=$temporary_directory/issue-numbers
+  jq -r '.[].number' "$issues_file" >"$issue_numbers"
+  numbers_pattern=$(paste -sd '|' "$issue_numbers")
+
+  linked_branches=$temporary_directory/linked-branches
+  jq -r --arg repository "$canonical_repository" '
+    .[] | .linkedBranches.nodes[] |
+    select(.ref.repository.nameWithOwner == $repository) |
+    .ref.name
+  ' "$issues_file" | sort -u >"$linked_branches"
+
+  while IFS= read -r branch; do
+    if grep -Fqx "$branch" "$linked_branches" ||
+       printf '%s\n' "$branch" | grep -Eq "(^|[-_/])(${numbers_pattern})([-_/]|$)"; then
+      printf '%s\n' "$branch" >>"$candidate_branches"
+    fi
+  done <"$all_branches"
+else
+  # Clean starts from the branches. Each issue number in a branch name is a
+  # possible owner. GitHub returns the state and the parent chain of only
+  # those issues, so the query size depends on the branches, not on the tree.
+  branch_numbers=$temporary_directory/branch-numbers
+  awk -F '[-_/]' '{
+    for (i = 1; i <= NF; i++) {
+      token = $i
+      if (token ~ /^[1-9][0-9]*$/ && length(token) <= 9) print $0 "\t" token
+    }
+  }' "$all_branches" >"$branch_numbers"
+
+  scope_numbers=$temporary_directory/scope-numbers
+  {
+    printf '%s\n' "$number"
+    cut -f2 "$branch_numbers"
+  } | sort -nu >"$scope_numbers"
+
+  scope_lines=$temporary_directory/scope-lines
+  : >"$scope_lines"
+  scope_total=$(wc -l <"$scope_numbers" | tr -d ' ')
+  scope_start=1
+  while [ "$scope_start" -le "$scope_total" ]; do
+    scope_end=$((scope_start + 49))
+    scope_query=$({
+      printf 'query($owner: String!, $name: String!) {\n  repository(owner: $owner, name: $name) {\n'
+      sed -n "${scope_start},${scope_end}p" "$scope_numbers" |
+        awk 'NF { printf "    i%s: issue(number: %s) {\n      ...CleanScopeIssue\n    }\n", $1, $1 }'
+      printf '  }\n}\n\n'
+      cat "$references/clean-scope.graphql"
+    })
+    # GitHub reports a number that is not an issue as a NOT_FOUND error and
+    # still returns the other issues.
+    scope_error=$temporary_directory/scope-error
+    scope_json=$(gh api graphql -F "owner=$owner" -F "name=$name" -f "query=$scope_query" 2>"$scope_error") || true
+    printf '%s' "$scope_json" | jq -e '
+      (.data.repository | type) == "object" and
+      all((.errors // [])[]; .type == "NOT_FOUND" and .path[0] == "repository" and (.path | length) == 2)
+    ' >/dev/null 2>&1 || {
+      echo "$command_name: cannot read the issues that the branch names reference" >&2
+      cat "$scope_error" >&2
+      exit 2
+    }
+    printf '%s' "$scope_json" | jq -c --arg repository "$canonical_repository" --argjson target "$number" '
+      # A parent in another repository ends the chain, because its number
+      # does not name an issue in this repository.
+      def chain:
+        if (.parent | type) == "object" and .parent.repository.nameWithOwner == $repository
+        then [.parent.number] + (.parent | chain) else [] end;
+      .data.repository[] | select(. != null) |
+      chain as $chain |
+      (.number == $target or ($chain | index($target)) != null) as $in_scope |
+      {
+        number,
+        title,
+        state,
+        scope: (if $in_scope then "in" elif ($chain | length) >= 9 then "unknown" else "out" end),
+        linked: [.linkedBranches.nodes[] | select(.ref.repository.nameWithOwner == $repository) | .ref.name],
+        linkedTruncated: (.linkedBranches.totalCount > (.linkedBranches.nodes | length))
+      }
+    ' >>"$scope_lines"
+    scope_start=$((scope_end + 1))
+  done
+  jq -s '.' "$scope_lines" >"$issues_file"
+  jq -e --argjson target "$number" 'any(.[]; .number == $target)' "$issues_file" >/dev/null || {
+    echo "$command_name: issue #$number was not found" >&2
+    exit 2
+  }
+  jq -e 'all(.[]; .scope != "in" or (.linkedTruncated | not))' "$issues_file" >/dev/null || {
+    echo "$command_name: GitHub truncated a linked branch list" >&2
+    exit 2
+  }
+
+  # One row for each branch and each issue that can own it: the branch, the
+  # issue number, the scope, and the issue state. Only rows in scope or of
+  # unknown scope make a branch a candidate. Rows out of scope keep the open
+  # state of other issues, so a branch of an open issue is never removed.
+  # A link from an issue that is not in scope counts as out of scope.
+  scope_table=$temporary_directory/scope-table
+  jq -r '.[] | [(.number | tostring), .scope, .state] | @tsv' \
+    "$issues_file" >"$scope_table"
+  {
+    awk -F '\t' 'NR == FNR { scope[$1] = $2 "\t" $3; next }
+      ($2 in scope) { print $1 "\t" $2 "\t" scope[$2] }' "$scope_table" "$branch_numbers"
+    jq -r '.[] | (.number | tostring) as $number | .state as $state |
+      (if .scope == "in" then "in" else "out" end) as $scope |
+      .linked[] | [., $number, $scope, $state] | @tsv' "$issues_file" |
+      awk -F '\t' 'NR == FNR { keep[$0] = 1; next } ($1 in keep)' "$all_branches" -
+  } | sort -u >"$branch_issues"
+  awk -F '\t' '$3 != "out" { print $1 }' "$branch_issues" | sort -u >"$candidate_branches"
 fi
 
 supacode_worktrees=$temporary_directory/supacode-worktrees
@@ -415,6 +543,21 @@ while IFS= read -r branch; do
     fi
   fi
 
+  if [ -z "$reason" ] && [ "$operation" = "clean" ]; then
+    open_issue=$(awk -F '\t' -v branch="$branch" \
+      '$1 == branch && $4 == "OPEN" { print $2; exit }' "$branch_issues")
+    unknown_issue=$(awk -F '\t' -v branch="$branch" '
+      $1 == branch && $3 == "in" { in_scope = 1 }
+      $1 == branch && $3 == "unknown" && unknown == "" { unknown = $2 }
+      END { if (!in_scope) print unknown }
+    ' "$branch_issues")
+    if [ -n "$open_issue" ]; then
+      reason="issue #$open_issue is open"
+    elif [ -n "$unknown_issue" ]; then
+      reason="cannot confirm that issue #$unknown_issue is under #$number"
+    fi
+  fi
+
   branch_oid=$local_oid
   [ -n "$branch_oid" ] || branch_oid=$remote_oid
   if [ -z "$reason" ] && [ "$operation" = "clean" ]; then
@@ -475,7 +618,7 @@ render_detailed_plan() {
     printf 'Pull requests to close: %s\n' "$pr_count"
     awk -F '\t' '{ printf "- #%s %s [%s]\n", $1, $2, $3 }' "$close_prs"
   else
-    printf 'Clean plan: issue #%s resolves to #%s %s\n' "$number" "$root_number" "$root_title"
+    printf 'Clean plan: issue #%s %s, with its sub-issues\n' "$number" "$root_title"
   fi
   printf 'Repository: %s\n' "$canonical_repository"
   printf 'Stable branch: %s at %s\n' "$stable_branch" "$stable_oid"
@@ -506,7 +649,7 @@ if [ "$action_count" -eq 0 ]; then
 fi
 
 plan_token=$({
-  printf 'operation\t%s\nrepository\t%s\nroot\t%s\nstable\t%s\t%s\nlocal-only\t%s\n' \
+  printf 'operation\t%s\nrepository\t%s\nscope\t%s\nstable\t%s\t%s\nlocal-only\t%s\n' \
     "$operation" "$canonical_repository" "$root_number" "$stable_branch" "$stable_oid" "$local_only"
   sed 's/^/issue\t/' "$close_issues"
   sed 's/^/pr\t/' "$close_prs"

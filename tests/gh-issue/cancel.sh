@@ -4,6 +4,7 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cancel_command=$repository_root/skills/engineering/gh-issue/scripts/cancel.sh
 fixture_directory=$repository_root/tests/gh-issue/fixtures
+fake_graphql=$repository_root/tests/gh-issue/fake-graphql.sh
 real_git=$(command -v git)
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gh-issue-cancel-tests.XXXXXX")
@@ -88,21 +89,7 @@ set -eu
 
 case "${1:-}:${2:-}" in
   api:graphql)
-    mode=
-    number=
-    for argument in "$@"; do
-      case "$argument" in
-        query=@*clean-root.graphql) mode=clean-root ;;
-        query=@*clean-tree.graphql) mode=clean-tree ;;
-        number=*) number=${argument#number=} ;;
-      esac
-    done
-    if [ "$mode" = "clean-tree" ] && [ "${GH_TRUNCATED:-false}" = "true" ]; then
-      jq '.data.repository.issue.subIssues.totalCount += 1' \
-        "$GH_FIXTURE_DIRECTORY/$mode-$number.json"
-    else
-      cat "$GH_FIXTURE_DIRECTORY/$mode-$number.json"
-    fi
+    exec "$GH_FAKE_GRAPHQL" "$@"
     ;;
   api:*)
     endpoint=
@@ -193,11 +180,16 @@ chmod +x "$fake_bin/supacode"
 
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
+graphql_log=$temporary_directory/graphql-calls.log
+: >"$graphql_log"
 
 run_cancel() {
   PATH="$fake_bin:$PATH" \
   REAL_GIT="$real_git" \
-  GH_FIXTURE_DIRECTORY="$fixture_directory" \
+  GH_FAKE_GRAPHQL="$fake_graphql" \
+  GH_ISSUE_GRAPH="${CANCEL_GRAPH:-$fixture_directory/cancel-graph.json}" \
+  GH_GRAPHQL_LOG="$graphql_log" \
+  GH_PAGE_SIZE=2 \
   GH_CALL_LOG="$call_log" \
   GH_FAIL_ISSUE="${GH_FAIL_ISSUE:-}" \
   GH_TRUNCATED="${GH_TRUNCATED:-false}" \
@@ -213,7 +205,12 @@ run_cancel() {
 plan_output=$(cd "$primary" && run_cancel example/agent-skills 81)
 printf '%s\n' "$plan_output" | grep -F \
   'Cancel plan: issue #81 resolves to #80 Abandoned effort' >/dev/null
-printf '%s\n' "$plan_output" | grep -F 'Issues to close as Not planned: 4' >/dev/null
+printf '%s\n' "$plan_output" | grep -F 'Issues to close as Not planned: 5' >/dev/null
+printf '%s\n' "$plan_output" | grep -F '#85 Grandchild without a branch' >/dev/null
+# Page size 2 splits the four sub-issues of #80 into two pages.
+grep -F "$(printf 'clean-subissues\t80\t\n')" "$graphql_log" >/dev/null
+grep -F "$(printf 'clean-subissues\t80\t2')" "$graphql_log" >/dev/null
+grep -F "$(printf 'clean-subissues\t81\t\n')" "$graphql_log" >/dev/null
 printf '%s\n' "$plan_output" | grep -F '#84 Already closed child' >/dev/null && {
   echo 'cancel plan included an already closed issue' >&2
   exit 1
@@ -240,7 +237,34 @@ if truncated_output=$(cd "$primary" && GH_TRUNCATED=true run_cancel example/agen
   exit 1
 fi
 printf '%s\n' "$truncated_output" | grep -F \
-  'GitHub returned incomplete cleanup data' >/dev/null
+  'GitHub returned 4 of 5 sub-issues of #80' >/dev/null
+[ ! -s "$call_log" ]
+
+# Cancel closes issues by number in this repository, so a hierarchy that
+# leaves the repository stops the command.
+foreign_child_graph=$temporary_directory/foreign-child-graph.json
+jq '.issues += [{repository: "other/project", number: 12,
+  title: "Sub-issue in another repository", state: "OPEN", parent: 80, linked: []}]' \
+  "$fixture_directory/cancel-graph.json" >"$foreign_child_graph"
+if foreign_output=$(cd "$primary" && CANCEL_GRAPH=$foreign_child_graph run_cancel example/agent-skills 81 2>&1); then
+  echo 'cancel accepted a sub-issue in another repository' >&2
+  exit 1
+fi
+printf '%s\n' "$foreign_output" | grep -F \
+  'cancel works in one repository, but #80 has the sub-issue other/project#12' >/dev/null
+[ ! -s "$call_log" ]
+
+foreign_parent_graph=$temporary_directory/foreign-parent-graph.json
+jq '(.issues[] | select(.number == 80) | .parent) = {repository: "other/project", number: 5} |
+  .issues += [{repository: "other/project", number: 5,
+    title: "Effort in another repository", state: "OPEN", parent: null, linked: []}]' \
+  "$fixture_directory/cancel-graph.json" >"$foreign_parent_graph"
+if foreign_output=$(cd "$primary" && CANCEL_GRAPH=$foreign_parent_graph run_cancel example/agent-skills 81 2>&1); then
+  echo 'cancel accepted a parent in another repository' >&2
+  exit 1
+fi
+printf '%s\n' "$foreign_output" | grep -F \
+  'cancel works in one repository, but the parents of #81 include other/project#5' >/dev/null
 [ ! -s "$call_log" ]
 
 token=$(printf '%s\n' "$plan_output" | awk '/^Confirmation token:/ { print $3 }')
@@ -279,7 +303,7 @@ printf '%s\n' "$apply_output" | grep -F \
 printf '%s\n' "$apply_output" | grep -F \
   'Worktrees to remove: 3' >/dev/null
 printf '%s\n' "$apply_output" | grep -F \
-  'Cancellation applied: 4 issue(s), 1 pull request(s), 3 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
+  'Cancellation applied: 5 issue(s), 1 pull request(s), 3 worktree(s), 3 local branch(es), 3 remote branch(es).' >/dev/null
 if printf '%s\n' "$apply_output" | grep -F "$root_worktree" >/dev/null; then
   echo 'cancel confirmation repeated worktree paths' >&2
   exit 1
@@ -290,13 +314,22 @@ if printf '%s\n' "$apply_output" | grep -F 'feat/issue-80-root at ' >/dev/null; 
 fi
 
 grep -F 'pr close 182 --repo example/agent-skills' "$call_log" >/dev/null
-for issue in 80 81 82 83; do
+for issue in 80 81 82 83 85; do
   grep -F "issue close $issue --repo example/agent-skills --reason not planned" "$call_log" >/dev/null
 done
 if grep -F 'issue close 84 ' "$call_log" >/dev/null; then
   echo 'cancel closed an already closed issue' >&2
   exit 1
 fi
+
+issue_close_line() {
+  grep -n -m 1 "^issue close $1 " "$call_log" | cut -d: -f1
+}
+[ "$(issue_close_line 85)" -lt "$(issue_close_line 81)" ] &&
+  [ "$(issue_close_line 81)" -lt "$(issue_close_line 80)" ] || {
+  echo 'cancel did not close sub-issues before their parents' >&2
+  exit 1
+}
 
 pr_close_line=$(grep -n -m 1 '^pr close ' "$call_log" | cut -d: -f1)
 first_issue_close_line=$(grep -n -m 1 '^issue close ' "$call_log" | cut -d: -f1)

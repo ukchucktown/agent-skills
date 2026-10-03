@@ -1,0 +1,70 @@
+fragment CleanScopeIssue on Issue {
+  number
+  title
+  state
+  linkedBranches(first: 10) {
+    totalCount
+    nodes {
+      ref {
+        name
+        repository {
+          nameWithOwner
+        }
+      }
+    }
+  }
+  parent {
+    number
+    repository {
+      nameWithOwner
+    }
+    parent {
+      number
+      repository {
+        nameWithOwner
+      }
+      parent {
+        number
+        repository {
+          nameWithOwner
+        }
+        parent {
+          number
+          repository {
+            nameWithOwner
+          }
+          parent {
+            number
+            repository {
+              nameWithOwner
+            }
+            parent {
+              number
+              repository {
+                nameWithOwner
+              }
+              parent {
+                number
+                repository {
+                  nameWithOwner
+                }
+                parent {
+                  number
+                  repository {
+                    nameWithOwner
+                  }
+                  parent {
+                    number
+                    repository {
+                      nameWithOwner
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

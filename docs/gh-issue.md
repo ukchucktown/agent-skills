@@ -191,12 +191,20 @@ Use `clean` with an issue number after GitHub merges the work:
 gh-issue clean 75
 ```
 
-The skill resolves the top-level effort and shows one cleanup plan. The plan
+The plan covers the issue and its sub-issues in the same repository. It does
+not include the parent issue. Thus, you can clean a merged task while its epic
+stays open. The plan
 can include eligible issue worktrees and local or remote branches. The skill
 asks for confirmation before it deletes any item.
 
+The stable branch is the branch that the primary checkout is on. It can be a
+long-lived feature branch instead of the default branch. Cleanup never removes
+the stable branch or the default branch.
+
 The normal cleanup preserves these items:
 
+- A branch whose name or link refers to an open issue, also an issue outside
+  the plan
 - A dirty or unavailable worktree
 - The active checkout
 - A protected branch
@@ -247,16 +255,18 @@ gh-issue cancel 75
 cancel issue 75
 ```
 
-Cancellation resolves the top-level effort and prepares one combined plan. The
+Cancellation resolves the top-level effort and prepares one combined plan. It
+reads all of the sub-issues of the effort, with no limit on their number. The
 plan can close open issues as `Not planned`, close open pull requests without a
-merge, and remove associated branches and worktrees.
+merge, and remove associated branches and worktrees. Cancellation stops before
+it changes any item when the effort includes an issue in another repository.
 
 Cancellation can discard unmerged commits, divergent tips, uncommitted
 changes, and Supacode-active worktrees. The skill reports the full plan and
 asks for confirmation before it changes any item.
 
-Cancellation never removes the stable checkout, a protected branch, an
-unrelated branch, an unavailable worktree, or a branch that multiple worktrees
+Cancellation never removes the stable checkout, the default branch, a
+protected branch, an unrelated branch, an unavailable worktree, or a branch that multiple worktrees
 use.
 
 ## Configuration

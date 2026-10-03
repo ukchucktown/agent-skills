@@ -1,0 +1,62 @@
+{
+  "repository": "example/agent-skills",
+  "defaultBranch": "main",
+  "openPullRequests": [
+    {
+      "number": 182,
+      "headRefName": "feat/issue-82-active"
+    }
+  ],
+  "issues": [
+    {
+      "number": 80,
+      "title": "Abandoned effort",
+      "state": "OPEN",
+      "parent": null,
+      "linked": [
+        "feat/issue-80-root"
+      ]
+    },
+    {
+      "number": 81,
+      "title": "Dirty child",
+      "state": "OPEN",
+      "parent": 80,
+      "linked": [
+        "feat/issue-81-dirty-divergent"
+      ]
+    },
+    {
+      "number": 82,
+      "title": "Active child",
+      "state": "OPEN",
+      "parent": 80,
+      "linked": [
+        "feat/issue-82-active"
+      ]
+    },
+    {
+      "number": 83,
+      "title": "Protected child",
+      "state": "OPEN",
+      "parent": 80,
+      "linked": [
+        "feat/issue-83-protected"
+      ]
+    },
+    {
+      "number": 84,
+      "title": "Already closed child",
+      "state": "CLOSED",
+      "parent": 80,
+      "linked": []
+    },
+    {
+      "number": 85,
+      "title": "Grandchild without a branch",
+      "state": "OPEN",
+      "parent": 81,
+      "linked": []
+    }
+  ]
+}
