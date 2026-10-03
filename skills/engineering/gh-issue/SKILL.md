@@ -23,6 +23,13 @@ in the user-facing response. Preserve the text verbatim. Do not convert branch
 names to Markdown bullets, inline code, or another list. This format keeps the
 output in one copyable region and avoids per-branch Markdown pills.
 
+Run cleanup and cancellation from the primary checkout of the repository. The
+stable branch is the branch that the primary checkout is on. It can be a
+long-lived feature branch instead of the default branch. The primary checkout
+must be on a branch, have no uncommitted changes, and match the remote branch
+of the same name. Cleanup and cancellation never remove the stable branch or
+the default branch.
+
 A confirmed command prints a compact count summary before it applies the
 unchanged plan. Relay only that summary and the final result as normal prose.
 Do not repeat the detailed branch and worktree lists. If a confirmation token
@@ -84,16 +91,20 @@ its stable branch:
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 Pass `--local-only` before the repository only when the user explicitly wants
-to preserve remote branches. The command resolves the top-level effort and
-prints one combined plan. It lists open issues that will close as `Not planned`,
+to preserve remote branches. The command resolves the top-level effort, reads
+all of its sub-issues page by page, and prints one combined plan. The command
+stops with no plan when the effort includes an issue in another repository,
+because it closes issues by number in the target repository. It lists open
+issues that will close as `Not planned`,
 open pull requests that will close with no merge, issue worktrees and branches
 that the command will remove, warnings, and preserved artifacts. Planning is
 read-only and creates no saved plan file.
 
 Cancellation is allowed to discard unmerged commits, divergent local and
 remote tips, uncommitted changes, and worktrees active in Supacode. It never
-removes the stable checkout, a protected branch, an unrelated branch, an
-unavailable worktree, or a branch used by more than one worktree. Relay the
+removes the stable checkout, the default branch, a protected branch, an
+unrelated branch, an unavailable worktree, or a branch used by more than one
+worktree. Relay the
 command's plan. Do not reconstruct it.
 
 Request one confirmation immediately before you apply the plan. After
@@ -165,9 +176,9 @@ remote tips. It accepts a branch tip under either condition:
 - The stable branch contains the tip.
 - A merged pull request records the tip as its exact head.
 
-It also keeps the primary checkout, default and protected branches, branches
-with open pull requests, unavailable worktrees, branches shared by multiple
-worktrees, and every unselected group.
+It also keeps the primary checkout, the stable, default, and protected
+branches, branches with open pull requests, unavailable worktrees, branches
+shared by multiple worktrees, and every unselected group.
 
 Treat force cleanup as separate explicit intent. Never infer it from `all` or
 from confirmation of an ordinary cleanup plan. Only when the user explicitly
@@ -339,14 +350,20 @@ branch:
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 Pass `--local-only` before the repository when the user wants to preserve
-remote branches. The command resolves the top-level effort, verifies its issue
-tree and branch state, and prints the complete cleanup plan. Planning is
+remote branches. The plan covers the issue and its sub-issues at all levels in
+the same repository. It does not include the parent issue, so the parent can
+stay open. A branch
+belongs to the plan when its name contains the number of one of these issues,
+or when one of these issues links the branch. The command reads only the issues
+that branch names refer to. It does not read the full issue tree. Planning is
 read-only and creates no saved plan file.
 
-Relay the command's plan. Do not reconstruct it. The command preserves dirty or
-unavailable worktrees, the active checkout, protected branches, branches with
-open pull requests, divergent local and remote tips, and work that cannot be
-verified in the stable branch. Stop when nothing is eligible.
+Relay the command's plan. Do not reconstruct it. The command preserves a branch
+when its name or a link refers to an open issue, also an issue outside the plan.
+It also preserves dirty or unavailable worktrees, the active checkout, protected
+branches, branches with open pull requests, divergent local and remote tips,
+and work that cannot be verified in the stable branch. Stop when nothing is
+eligible.
 
 Request confirmation immediately before deletion. After confirmation, apply
 only the displayed plan with its exact token:

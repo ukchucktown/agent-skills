@@ -1,0 +1,41 @@
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      ...CleanIssue
+      subIssues(first: 100, after: $after) {
+        totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          ...CleanIssue
+          subIssues {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment CleanIssue on Issue {
+  number
+  title
+  state
+  url
+  repository {
+    nameWithOwner
+  }
+  linkedBranches(first: 10) {
+    totalCount
+    nodes {
+      ref {
+        name
+        repository {
+          nameWithOwner
+        }
+      }
+    }
+  }
+}

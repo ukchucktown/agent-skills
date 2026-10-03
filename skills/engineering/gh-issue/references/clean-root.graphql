@@ -39,4 +39,7 @@ fragment CleanRootIssue on Issue {
   title
   state
   url
+  repository {
+    nameWithOwner
+  }
 }
