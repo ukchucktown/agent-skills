@@ -17,7 +17,7 @@ implement changes, review pull requests, or merge pull requests.
 | `finish issue 75` | Validate, commit, push, and prepare an unmerged pull request. |
 | `clean issue 75` | Remove eligible artifacts from completed work after confirmation. |
 | `clean` | List residual repository branches and let you select cleanup candidates. |
-| `force clean` | Include unmerged, divergent, dirty, or active candidates with explicit warnings. |
+| `force clean` | Include unmerged, divergent, or dirty candidates with explicit warnings. |
 | `cancel issue 75` | Close abandoned work as `Not planned` and remove its artifacts after confirmation. |
 
 `start` prepares the workspace but does not implement the issue. `finish`
@@ -33,8 +33,7 @@ Install these tools before you use the skill:
 - [GitHub CLI](https://cli.github.com/) with access to the target repository
 - `jq`
 
-Supacode is optional. The skill can use native Git worktrees when Supacode is
-unavailable or disabled.
+The skill uses native Git for all worktree operations.
 
 ## Installation
 
@@ -92,14 +91,9 @@ shows the evidence and you decide. Each local worktree of a skipped issue has
 these items:
 
 - The worktree path and its branch.
-- The number of open Supacode tabs, when Supacode manages the worktree. The tab
-  of the current session does not count.
 - The number of branch commits that no other branch contains, and the age of
   the last commit.
 - The number of uncommitted changes.
-
-An open Supacode tab alone does not prove active work. Supacode keeps a tab
-open after the work stops.
 
 If you omit the issue number, the skill presents a short list of recent open
 issues that you authored or that GitHub assigned to you. The skill waits for
@@ -126,12 +120,12 @@ The start workflow handles these tasks:
 7. Stop before implementation starts.
 
 One checked-in command performs the complete start or resume workflow. The
-agent does not coordinate separate GitHub, Git, Project, or worktree-manager
+agent does not coordinate separate GitHub, Git, or Project
 calls and does not delegate this deterministic work to another agent.
 
 If required evidence conflicts, the command returns one structured question
 before it changes state. The skill asks that question and reruns the command
-with the selected branch, base, destination, manager, or confirmed worktree
+with the selected branch, base, destination, or confirmed worktree
 path. It does not use more searches to guess the answer.
 
 Start preserves existing assignees and reports their names. Before branch
@@ -140,19 +134,17 @@ higher branch. If an ancestor is behind or divergent, the command reports the
 missing commit count and requests a base.
 
 Use `resume` when a linked remote branch exists without a local worktree. The
-skill attaches that branch through the configured worktree manager.
+skill attaches that branch through native Git.
 
 Before `start` or `resume` attaches an existing worktree, the command collects
-the same evidence as the status workflow. The worktree looks in use when it has
-an open Supacode tab or uncommitted changes. The tab of the current session does
-not count. If the worktree looks in use, the command makes no change and asks
-you to confirm. The question shows the path and the evidence. After you
+the same Git evidence as the status workflow. Uncommitted changes indicate
+possible use by another session. If uncommitted changes exist, the
+command makes no change and asks you to confirm. The question shows the path and the evidence. After you
 confirm, the skill reruns the command with `--accept-in-use PATH`. The path
 must be the path that the question shows. A worktree that does not look in use
 attaches with no question.
 
-Supacode keeps a tab open after work stops. For this reason, Supacode users can
-see this question for a worktree that no session uses.
+Git evidence does not establish whether another session uses a clean worktree.
 
 ### Finish
 
@@ -205,7 +197,7 @@ The normal cleanup preserves these items:
 
 - A branch whose name or link refers to an open issue, also an issue outside
   the plan
-- A dirty or unavailable worktree
+- A dirty, locked, or unavailable worktree
 - The active checkout
 - A protected branch
 - A branch with an open pull request
@@ -233,16 +225,16 @@ confirmation.
 Repository cleanup accepts a squash-merged branch only if GitHub records the
 branch tip as a merged pull request's exact head.
 
-Use force cleanup only when you intend to discard unmerged, divergent, dirty,
-or Supacode-active work:
+Use force cleanup only when you intend to discard unmerged, divergent, or dirty
+work:
 
 ```text
 gh-issue force clean
 ```
 
 Force cleanup displays each risk as a warning. It still protects the stable
-checkout, protected branches, branches with open pull requests, unavailable
-worktrees, and branches that multiple worktrees use.
+checkout, protected branches, branches with open pull requests, locked or
+unavailable worktrees, and branches that multiple worktrees use.
 
 Repository cleanup does not close issues or pull requests.
 
@@ -261,13 +253,13 @@ plan can close open issues as `Not planned`, close open pull requests without a
 merge, and remove associated branches and worktrees. Cancellation stops before
 it changes any item when the effort includes an issue in another repository.
 
-Cancellation can discard unmerged commits, divergent tips, uncommitted
-changes, and Supacode-active worktrees. The skill reports the full plan and
-asks for confirmation before it changes any item.
+Cancellation can discard unmerged commits, divergent tips, and uncommitted
+changes. The skill reports the full plan and asks for confirmation before it
+changes any item.
 
 Cancellation never removes the stable checkout, the default branch, a
-protected branch, an unrelated branch, an unavailable worktree, or a branch that multiple worktrees
-use.
+protected branch, an unrelated branch, a locked or unavailable worktree, or a
+branch that multiple worktrees use.
 
 ## Configuration
 

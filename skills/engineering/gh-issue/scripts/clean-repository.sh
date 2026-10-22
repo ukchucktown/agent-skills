@@ -211,15 +211,6 @@ awk '
   END { emit() }
 ' "$worktrees_file" >"$worktree_rows"
 
-supacode_worktrees=$temporary_directory/supacode-worktrees
-supacode_focused=$temporary_directory/supacode-focused
-: >"$supacode_worktrees"
-: >"$supacode_focused"
-if command -v supacode >/dev/null 2>&1; then
-  supacode worktree list --timeout 5 >"$supacode_worktrees" 2>/dev/null || : >"$supacode_worktrees"
-  supacode worktree list --focused --timeout 5 >"$supacode_focused" 2>/dev/null || : >"$supacode_focused"
-fi
-
 candidates=$temporary_directory/candidates
 blocked=$temporary_directory/blocked
 : >"$candidates"
@@ -259,11 +250,8 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
       reason="more than one worktree uses the branch"
     fi
 
-    worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
-    if awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_worktrees"; then
-      manager=supacode
-    elif [ "$worktree_locked" = "true" ]; then
-      reason="worktree is locked outside Supacode"
+    if [ "$worktree_locked" = "true" ]; then
+      reason="worktree is locked"
     fi
 
     if [ -z "$reason" ]; then
@@ -272,9 +260,6 @@ while IFS="$(printf '\t')" read -r worktree_path branch worktree_locked; do
       else
         reason="worktree is unavailable"
       fi
-    fi
-    if [ -z "$reason" ] && awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_focused"; then
-      risk="${risk}${risk:+; }worktree is active in Supacode"
     fi
     if [ -z "$reason" ] && [ -n "$remote_oid" ] && [ "$local_oid" != "$remote_oid" ]; then
       risk="${risk}${risk:+; }local and remote tips differ"
@@ -583,13 +568,7 @@ done <"$remove_remote"
 
 while IFS="$(printf '\t')" read -r worktree_path branch manager; do
   [ -n "$worktree_path" ] || continue
-  if [ "$manager" = "supacode" ]; then
-    worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
-    if ! removal_output=$(supacode worktree delete \
-      --worktree "$worktree_id" --background --timeout 30 2>&1); then
-      report_partial_cleanup "remove worktree $worktree_path through Supacode" "$removal_output"
-    fi
-  elif [ "$force" = "true" ]; then
+  if [ "$force" = "true" ]; then
     if ! removal_output=$(git worktree remove --force --force "$worktree_path" 2>&1); then
       report_partial_cleanup "remove worktree $worktree_path" "$removal_output"
     fi

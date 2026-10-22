@@ -31,7 +31,8 @@ cross-harness instruction fragments, and deterministic workflow helpers.
 ## Delivery
 
 - Keep the primary checkout on `main`.
-- Follow the global Supacode worktree convention for every task branch.
+- Use the `gh-issue` workflow and native Git for every task worktree.
+- Keep task worktrees under `$HOME/Github/worktrees/<repository>/<worktree-name>`.
 - Commit and push reviewed changes on feature branches. Do not push feature
   work directly to `main`.
 - Keep the repository private unless the user explicitly changes that choice.

@@ -23,7 +23,6 @@ This example uses synthetic owners and board numbers:
 ```json
 {
   "schemaVersion": 2,
-  "worktreeManager": "auto",
   "projectSync": {
     "enabled": true,
     "ancestors": true,
@@ -181,14 +180,15 @@ The preview shows the migration. It never authorizes automatic board assignment.
 
 ## Branch and worktree settings
 
-`worktreeManager` accepts `auto`, `supacode`, or `git`. The `auto` setting uses
-Supacode when it contains the primary repository. Otherwise, it uses native Git.
+The skill uses native Git for all worktree operations. The resolver ignores the
+retired `worktreeManager` setting at every configuration tier. A confirmed config
+write removes that setting from the saved configuration.
 `worktreeRoot` contains a directory for each repository. Without an explicit
 root, the skill uses a worktrees directory beside the primary checkout's container.
 
 `integrationBranchTemplate`, `taskBranchTemplate`, and `worktreeTemplate` require
-`{number}` and `{slug}`. Explicit branch and manager options override resolved
-settings. Existing issue branches take precedence over templates.
+`{number}` and `{slug}`. Explicit branch options override resolved settings.
+Existing issue branches take precedence over templates.
 
 `taskBaseBranch` selects an existing base for tasks without direct children.
 Start omits intermediate ancestor branches for those tasks. Finish uses that

@@ -135,7 +135,7 @@ else:
         git_wrapper.write_text('#!/bin/sh\nif [ "$1" = remote ] && [ "$2" = get-url ]; then\n  exec "$REAL_GIT" config --get remote.origin.url\nfi\nexec "$REAL_GIT" "$@"\n')
         git_wrapper.chmod(0o755)
         mapping = self.mapping()
-        mapping.update(worktreeManager='git', worktreeRoot=str(self.root / 'worktrees'))
+        mapping.update(worktreeRoot=str(self.root / 'worktrees'))
         self.config.write_text(json.dumps(mapping))
 
     def test_public_start_resume_and_status_share_assigned_board_resolution(self):
@@ -293,6 +293,22 @@ else:
         self.assertFalse(self.calls.exists())
 
 
+    def test_retired_manager_settings_are_ignored_at_every_tier(self):
+        for tier in ('global', 'organization', 'repository', 'invocation'):
+            with self.subTest(tier=tier):
+                setting = {'worktreeManager': 'supacode'}
+                config = {'global': setting,
+                          'organization': {'organizations': {'org': setting}},
+                          'repository': {'repositories': {'org/repo': setting}},
+                          'invocation': {}}[tier]
+                self.config.write_text(json.dumps(config))
+                args = ['org/repo']
+                if tier == 'invocation':
+                    args += ['--override', json.dumps(setting)]
+                result = self.run_command('config.sh', *args)
+                self.assertNotIn('worktreeManager', result['effective'])
+                self.assertNotIn('worktreeManager', result['sources'])
+
     def test_legacy_migration_preserves_owner_scope_and_unrelated_settings(self):
         original = {'worktreeManager':'git','customSetting':{'retain':True},
                     'projectStatus':{'enabled':True,'owner':'ORG','number':4,'field':'Status','startOption':'In Progress'},
@@ -309,6 +325,7 @@ else:
         saved = json.loads(self.config.read_text())
         self.assertEqual(saved['customSetting'], {'retain':True})
         self.assertEqual(saved['repositories']['org/repo']['taskBranchTemplate'],'feat/task-{number}-{slug}')
+        self.assertNotIn('worktreeManager', saved)
         self.assertNotIn('projectStatus', saved)
         self.assertEqual(saved['schemaVersion'], 2)
         self.assertEqual(self.run_command('config.sh','other/repo')['effective']['projectSync']['boards'], {})

@@ -6,7 +6,7 @@ const { homedir } = require('node:os');
 const { parseArgs } = require('node:util');
 const HERE = __dirname;
 const DEFAULTS = {
-  worktreeManager: 'auto', worktreeRoot: null, taskBaseBranch: null,
+  worktreeRoot: null, taskBaseBranch: null,
   integrationBranchTemplate: 'integration/issue-{number}-{slug}',
   taskBranchTemplate: 'feat/issue-{number}-{slug}',
   worktreeTemplate: 'issue-{number}-{slug}',
@@ -73,6 +73,8 @@ function keyed(value, kind) {
 function layer(value) {
   if (!object(value)) throw new Problem('Each configuration tier must be an object');
   const result = clone(value);
+  // Ignore the retired manager setting at every configuration tier.
+  delete result.worktreeManager;
   if (!own(result, 'projectSync')) return result;
   const sync = result.projectSync;
   if (!object(sync)) throw new Problem('projectSync must be an object');
@@ -211,9 +213,6 @@ function resolver(raw, override) {
         effective.projectSync.boards[identity] = { ...board, enabled: true };
         sources['projectSync.boards.' + identity + '.enabled'] = 'default';
       }
-    }
-    if (!['auto', 'git', 'supacode'].includes(effective.worktreeManager)) {
-      throw new Problem('worktreeManager must be auto, git, or supacode');
     }
     if (effective.worktreeRoot !== null &&
         (typeof effective.worktreeRoot !== 'string' || !path.isAbsolute(effective.worktreeRoot))) {

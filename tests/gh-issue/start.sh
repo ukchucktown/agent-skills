@@ -9,6 +9,14 @@ trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
+
+# Record any retired integration call without access to the real installation.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
+exit 70
+EOF
+chmod +x "$fake_bin/supacode"
 cat >"$fake_bin/gh" <<'EOF'
 #!/bin/sh
 set -eu
@@ -32,6 +40,11 @@ case "${1:-}:${2:-}" in
         total=1
         title='Resume existing work'
         ;;
+      111)
+        linked='[{"ref":{"name":"feat/issue-111-local","repository":{"nameWithOwner":"example/start"}}}]'
+        total=1
+        title='Attach a local branch'
+        ;;
       103)
         linked='[{"ref":{"name":"feat/issue-103-one","repository":{"nameWithOwner":"example/start"}}},{"ref":{"name":"fix/issue-103-two","repository":{"nameWithOwner":"example/start"}}}]'
         total=2
@@ -40,7 +53,7 @@ case "${1:-}:${2:-}" in
       104)
         linked='[]'
         total=0
-        title='Create a Supacode worktree'
+        title='Read a legacy manager setting'
         ;;
       106|107|108|109|110)
         linked='[]'
@@ -102,56 +115,6 @@ esac
 EOF
 chmod +x "$fake_bin/gh"
 
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-set -eu
-
-case "${1:-}:${2:-}" in
-  repo:list)
-    canonical_primary=$("$REAL_GIT" -C "$START_PRIMARY" rev-parse --show-toplevel)
-    jq -nr --arg value "${canonical_primary%/}/" '$value | @uri'
-    ;;
-  repo:worktree-new)
-    shift 2
-    branch=
-    base=
-    location=
-    name=
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        --branch) branch=$2; shift 2 ;;
-        --base) base=$2; shift 2 ;;
-        --location) location=$2; shift 2 ;;
-        --name) name=$2; shift 2 ;;
-        -r|--repo|--upstream) shift 2 ;;
-        --background) shift ;;
-        *) shift ;;
-      esac
-    done
-    mkdir -p "$location"
-    "$REAL_GIT" -C "$START_PRIMARY" worktree add -q -b "$branch" --track "$location/$name" "$base"
-    jq -nr --arg value "${location%/}/$name/" '$value | @uri'
-    ;;
-  worktree:list)
-    "$REAL_GIT" -C "$START_PRIMARY" worktree list --porcelain |
-      awk '/^worktree / { print substr($0, 10) }' |
-      while IFS= read -r path; do
-        jq -nr --arg value "${path%/}/" '$value | @uri'
-      done
-    ;;
-  tab:list)
-    for tab in ${FAKE_SUPACODE_TABS:-}; do
-      printf '%s\n' "$tab"
-    done
-    ;;
-  *)
-    printf 'unexpected supacode call: %s\n' "$*" >&2
-    exit 70
-    ;;
-esac
-EOF
-chmod +x "$fake_bin/supacode"
-
 remote=$temporary_directory/remote.git
 primary=$temporary_directory/start
 git init -q --bare "$remote"
@@ -170,7 +133,6 @@ git -C "$primary" push -q origin main:refs/heads/feat/issue-102-existing
 config_file=$temporary_directory/config.json
 cat >"$config_file" <<EOF
 {
-  "worktreeManager": "git",
   "worktreeRoot": "$temporary_directory/worktrees",
   "projectStatus": {"enabled": false},
   "repositories": {}
@@ -237,28 +199,28 @@ printf '%s' "$ambiguous_output" | jq -e '
 [ ! -s "$call_log" ]
 [ ! -d "$temporary_directory/worktrees/start/issue-103-resolve-conflicting-work" ]
 
-supacode_config_file=$temporary_directory/supacode-config.json
-cat >"$supacode_config_file" <<EOF
+legacy_config_file=$temporary_directory/legacy-config.json
+cat >"$legacy_config_file" <<EOF
 {
   "worktreeManager": "supacode",
-  "worktreeRoot": "$temporary_directory/supacode-worktrees",
+  "worktreeRoot": "$temporary_directory/legacy-worktrees",
   "projectStatus": {"enabled": false},
   "repositories": {}
 }
 EOF
 : >"$call_log"
 
-supacode_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
+legacy_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
   REAL_GIT="$(command -v git)" \
   START_PRIMARY="$primary" \
   GH_CALL_LOG="$call_log" \
-  AGENT_SKILLS_CONFIG="$supacode_config_file" \
+  AGENT_SKILLS_CONFIG="$legacy_config_file" \
   "$start_command" start example/start 104)
 
-printf '%s\n' "$supacode_output" | grep -F 'Status: started' >/dev/null
-printf '%s\n' "$supacode_output" | grep -F 'Manager: supacode' >/dev/null
-supacode_worktree=$temporary_directory/supacode-worktrees/start/issue-104-create-a-supacode-worktree
-[ "$(git -C "$supacode_worktree" branch --show-current)" = 'feat/issue-104-create-a-supacode-worktree' ]
+printf '%s\n' "$legacy_output" | grep -F 'Status: started' >/dev/null
+printf '%s\n' "$legacy_output" | grep -F 'Manager: git' >/dev/null
+legacy_worktree=$temporary_directory/legacy-worktrees/start/issue-104-read-a-legacy-manager-setting
+[ "$(git -C "$legacy_worktree" branch --show-current)" = 'feat/issue-104-read-a-legacy-manager-setting' ]
 
 : >"$call_log"
 compound_output=$(cd "$primary" && PATH="$fake_bin:$PATH" \
@@ -346,17 +308,15 @@ idle_output=$(run_start resume example/start 101)
 printf '%s\n' "$idle_output" | grep -F 'Status: existing_worktree' >/dev/null
 grep -F 'issue edit 101' "$call_log" >/dev/null
 
-# An open Supacode tab requires a confirmation before any change.
-export FAKE_SUPACODE_TABS=TAB-1
+# Uncommitted work requires confirmation before any change.
 : >"$call_log"
+printf 'draft\n' >"$created_worktree/draft.txt"
 if run_start resume example/start 101 >"$temporary_directory/in-use"; then exit 1; fi
-jq -e '
-  .status == "needs_input" and .field == "accept-in-use" and
-  (.question | contains("Supacode tabs 1")) and (.candidates | length) == 1
-' "$temporary_directory/in-use" >/dev/null
+jq -e '.status == "needs_input" and .field == "accept-in-use" and
+  (.question | contains("uncommitted changes 1")) and (.candidates | length) == 1' \
+  "$temporary_directory/in-use" >/dev/null
 [ ! -s "$call_log" ]
 in_use_path=$(jq -r '.candidates[0]' "$temporary_directory/in-use")
-[ "$(git -C "$in_use_path" branch --show-current)" = 'feat/issue-101-create-a-scripted-start-workflow' ]
 
 # A different path does not confirm the shown worktree.
 if run_start resume --accept-in-use "$temporary_directory/elsewhere" example/start 101 >"$temporary_directory/in-use-other"; then exit 1; fi
@@ -368,27 +328,22 @@ accepted_output=$(run_start start --accept-in-use "$in_use_path" example/start 1
 printf '%s\n' "$accepted_output" | grep -F 'Status: existing_worktree' >/dev/null
 grep -F 'issue edit 101' "$call_log" >/dev/null
 
-# The tab of the current session does not count.
-: >"$call_log"
-SUPACODE_WORKTREE_ID=$(jq -nr --arg value "${in_use_path%/}/" '$value | @uri')
-SUPACODE_TAB_ID=tab-1
-export SUPACODE_WORKTREE_ID SUPACODE_TAB_ID
-own_tab_output=$(run_start resume example/start 101)
-printf '%s\n' "$own_tab_output" | grep -F 'Status: existing_worktree' >/dev/null
-unset FAKE_SUPACODE_TABS SUPACODE_WORKTREE_ID SUPACODE_TAB_ID
-
-# Uncommitted changes also require a confirmation.
-printf 'draft\n' >"$in_use_path/draft.txt"
-: >"$call_log"
-if run_start resume example/start 101 >"$temporary_directory/in-use-draft"; then exit 1; fi
-jq -e '
-  .field == "accept-in-use" and (.question | contains("uncommitted changes 1"))
-' "$temporary_directory/in-use-draft" >/dev/null
-[ ! -s "$call_log" ]
 rm "$in_use_path/draft.txt"
+
+# Resume attaches an existing local branch without replacing its commits.
+git -C "$primary" branch feat/issue-111-local initiative
+: >"$call_log"
+local_output=$(run_start resume example/start 111)
+printf '%s\n' "$local_output" | grep -F 'Status: resumed' >/dev/null
+local_path=$temporary_directory/worktrees/start/issue-111-attach-a-local-branch
+[ "$(git -C "$local_path" branch --show-current)" = 'feat/issue-111-local' ]
+[ "$(git -C "$local_path" rev-parse HEAD)" = "$(git -C "$primary" rev-parse initiative)" ]
+if grep '^issue develop ' "$call_log" >/dev/null; then exit 1; fi
 
 # Existing assignments remain unchanged on both start and resume.
 printf '%s\n' "$existing_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
 printf '%s\n' "$resume_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
+
+[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue start tests passed\n'

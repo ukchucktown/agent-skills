@@ -73,7 +73,6 @@ printf 'diverge\n' >>"$leftover_worktree/leftover.txt"
 "$real_git" -C "$leftover_worktree" add leftover.txt
 "$real_git" -C "$leftover_worktree" commit -q -m 'Diverge locally'
 printf 'uncommitted\n' >"$leftover_worktree/uncommitted.txt"
-"$real_git" -C "$primary" worktree lock "$active_worktree" --reason supacode
 "$real_git" -C "$primary" worktree lock "$locked_worktree" --reason other
 
 remote=$(CDPATH= cd -- "$remote" && pwd -P)
@@ -88,6 +87,14 @@ squash_merged_worktree=$("$real_git" -C "$squash_merged_worktree" rev-parse --sh
 
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
+
+# Record any retired integration call without access to the real installation.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
+exit 70
+EOF
+chmod +x "$fake_bin/supacode"
 
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
@@ -138,7 +145,7 @@ case "${1:-}:${2:-}" in
         branch=$(printf '%s' "$encoded" | sed 's/%2F/\//g; s/%2f/\//g')
         if [ "${LOCK_DURING_REVALIDATION_BRANCH:-}" = "$branch" ]; then
           "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree lock \
-            "$LOCK_DURING_REVALIDATION_PATH" --reason supacode
+            "$LOCK_DURING_REVALIDATION_PATH" --reason reserved
         fi
         oid=$("$REAL_GIT" --git-dir="$CLEAN_REMOTE" rev-parse "refs/heads/$branch")
         protected=false
@@ -179,36 +186,6 @@ esac
 EOF
 chmod +x "$fake_bin/gh"
 
-active_supacode_id=$(jq -nr --arg value "${active_worktree%/}/" '$value | @uri')
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-set -eu
-
-case "${1:-}:${2:-}:${3:-}" in
-  worktree:list:*)
-    printf '%s\tunpinned\n' "$SUPACODE_ACTIVE_ID"
-    ;;
-  worktree:delete:*)
-    id=
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = "--worktree" ]; then
-        id=$2
-        break
-      fi
-      shift
-    done
-    [ "$id" = "$SUPACODE_ACTIVE_ID" ] || exit 70
-    "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree unlock "$SUPACODE_ACTIVE_PATH"
-    "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree remove --force "$SUPACODE_ACTIVE_PATH"
-    ;;
-  *)
-    printf 'unexpected supacode call: %s\n' "$*" >&2
-    exit 70
-    ;;
-esac
-EOF
-chmod +x "$fake_bin/supacode"
-
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
 
@@ -219,8 +196,6 @@ run_clean() {
   CLEAN_REMOTE="$remote" \
   CLEAN_PRIMARY="$primary" \
   GH_CALL_LOG="$call_log" \
-  SUPACODE_ACTIVE_ID="$active_supacode_id" \
-  SUPACODE_ACTIVE_PATH="$active_worktree" \
   LOCK_DURING_REVALIDATION_BRANCH="${lock_during_revalidation_branch:-}" \
   LOCK_DURING_REVALIDATION_PATH="${lock_during_revalidation_path:-}" \
   FAIL_WORKTREE_REMOVE_PATH="${fail_worktree_remove_path:-}" \
@@ -250,13 +225,13 @@ printf '%s\n' "$candidate_output" | grep -F \
   'worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
 grep -F 'pr list --head feat/leftover' "$call_log" >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'worktree is active in Supacode; branch tip is not in main' >/dev/null
+  'branch tip is not in main' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'Reason: remote branch is protected' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
   'Reason: open pull request' >/dev/null
 printf '%s\n' "$candidate_output" | grep -F \
-  'Reason: worktree is locked outside Supacode' >/dev/null
+  'Reason: worktree is locked' >/dev/null
 for branch in \
   feat/leftover feat/active feat/protected feat/open-pr feat/locked \
   feat/orphan-both feat/orphan-local feat/orphan-remote feat/unselected feat/squash-merged; do
@@ -389,7 +364,7 @@ printf '%s\n' "$force_output" | grep -F 'Blocked branches (3)' >/dev/null
 printf '%s\n' "$force_output" | grep -F \
   'Warnings: worktree has uncommitted changes; local and remote tips differ; branch tip is not in main' >/dev/null
 printf '%s\n' "$force_output" | grep -F \
-  'Warnings: worktree is active in Supacode; branch tip is not in main' >/dev/null
+  'Warnings: branch tip is not in main' >/dev/null
 assert_branch_once "$force_output" feat/leftover
 assert_branch_once "$force_output" feat/active
 
@@ -499,5 +474,7 @@ fi
 printf '%s\n' "$default_output" | grep -F \
   'branch main cannot be selected: default branch cannot be selected' >/dev/null
 [ -d "$default_worktree" ]
+
+[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue repository clean command tests passed\n'

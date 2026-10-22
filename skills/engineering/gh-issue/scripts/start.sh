@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--manager auto|supacode|git] [--accept-in-use PATH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: start.sh start|resume [--branch BRANCH] [--base BRANCH] [--destination PATH] [--accept-in-use PATH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
 }
 
@@ -117,17 +117,15 @@ esac
 selected_branch=
 selected_base=
 selected_destination=
-selected_manager=
 accepted_in_use=
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --branch|--base|--destination|--manager|--accept-in-use|--project-override)
+    --branch|--base|--destination|--accept-in-use|--project-override)
       [ "$#" -ge 2 ] || usage
       case "$1" in
         --branch) selected_branch=$2 ;;
         --base) selected_base=$2 ;;
         --destination) selected_destination=$2 ;;
-        --manager) selected_manager=$2 ;;
         --accept-in-use) accepted_in_use=$2 ;;
         --project-override) AGENT_SKILLS_PROJECT_OVERRIDE=$2; export AGENT_SKILLS_PROJECT_OVERRIDE ;;
       esac
@@ -146,10 +144,6 @@ case "$number" in
   ''|*[!0-9]*) usage ;;
 esac
 [ "$number" -gt 0 ] || usage
-case "$selected_manager" in
-  ''|auto|supacode|git) ;;
-  *) usage ;;
-esac
 
 command -v jq >/dev/null 2>&1 || {
   echo "start.sh: jq is required" >&2
@@ -246,8 +240,6 @@ if [ -n "$selected_base" ]; then
     exit 2
   }
 fi
-configured_manager=$(printf '%s' "$config" | jq -r '.worktreeManager')
-[ -z "$selected_manager" ] || configured_manager=$selected_manager
 
 focused_candidates=$temporary_directory/focused-candidates
 collect_candidates "$number" "$focused_candidates"
@@ -300,28 +292,6 @@ if [ -z "$existing_worktree" ] && [ -e "$destination" ]; then
   needs_input destination "Which unused destination should issue #$number use?" "$temporary_directory/destination"
 fi
 
-supacode_repository_id=
-if [ "$configured_manager" != "git" ] && command -v supacode >/dev/null 2>&1; then
-  expected_id=$(jq -nr --arg value "${primary%/}/" '$value | @uri')
-  if supacode repo list --timeout 5 >"$temporary_directory/supacode-repositories" 2>/dev/null; then
-    supacode_repository_id=$(grep -Fx "$expected_id" "$temporary_directory/supacode-repositories" || true)
-  fi
-fi
-
-case "$configured_manager" in
-  git) manager=git ;;
-  auto)
-    if [ -n "$supacode_repository_id" ]; then manager=supacode; else manager=git; fi
-    ;;
-  supacode)
-    if [ -z "$supacode_repository_id" ]; then
-      printf '%s\n' git >"$temporary_directory/managers"
-      needs_input manager "Supacode does not contain $canonical_repository. Which worktree manager should be used?" "$temporary_directory/managers"
-    fi
-    manager=supacode
-    ;;
-esac
-
 project_output=$temporary_directory/project-output
 if ! "$script_directory/project-start.sh" --dry-run "$canonical_repository" "$number" >"$project_output"; then
   cat "$project_output"
@@ -353,7 +323,7 @@ if [ -n "$existing_worktree" ]; then
     echo "start.sh: worktree evidence failed for $existing_worktree" >&2
     exit 2
   fi
-  if printf '%s' "$evidence" | jq -e '(.supacodeTabs // 0) > 0 or .uncommitted > 0' >/dev/null &&
+  if printf '%s' "$evidence" | jq -e '.uncommitted > 0' >/dev/null &&
     [ "${accepted_in_use%/}" != "${existing_worktree%/}" ]; then
     printf '%s\n' "$existing_worktree" >"$temporary_directory/in-use"
     needs_input accept-in-use "Worktree $existing_worktree for issue #$number looks in use: $(printf '%s' "$evidence" | jq -r '.summary'). Another session can work in it. Attach it anyway?" "$temporary_directory/in-use"
@@ -461,19 +431,10 @@ else
 fi
 
 mkdir -p "$worktree_location"
-if [ "$manager" = "supacode" ]; then
-  if [ "$attach_kind" = "local" ]; then
-    worktree_id=$(supacode repo worktree-new -r "$supacode_repository_id" --branch "$focused_branch" --location "$worktree_location" --name "$worktree_name" --background)
-  else
-    worktree_id=$(supacode repo worktree-new -r "$supacode_repository_id" --branch "$focused_branch" --base "origin/$focused_branch" --upstream "origin/$focused_branch" --location "$worktree_location" --name "$worktree_name" --background)
-  fi
+if [ "$attach_kind" = "local" ]; then
+  git -C "$primary" worktree add "$destination" "$focused_branch" >/dev/null
 else
-  if [ "$attach_kind" = "local" ]; then
-    git -C "$primary" worktree add "$destination" "$focused_branch" >/dev/null
-  else
-    git -C "$primary" worktree add -b "$focused_branch" --track "$destination" "origin/$focused_branch" >/dev/null
-  fi
-  worktree_id=
+  git -C "$primary" worktree add -b "$focused_branch" --track "$destination" "origin/$focused_branch" >/dev/null
 fi
 
 checked_out_branch=$(git -C "$destination" branch --show-current 2>/dev/null || true)
@@ -492,6 +453,5 @@ printf 'Hierarchy: %s\n' "$hierarchy_text"
 printf 'Branch: %s\n' "$focused_branch"
 printf 'Worktree: %s\n' "$destination"
 printf 'Assignees: %s\n' "$assignment"
-printf 'Manager: %s\n' "$manager"
-[ -z "$worktree_id" ] || printf 'Supacode worktree ID: %s\n' "$worktree_id"
+printf 'Manager: git\n'
 render_projects

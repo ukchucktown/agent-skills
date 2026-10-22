@@ -99,11 +99,18 @@ open_other_worktree=$("$real_git" -C "$open_other_worktree" rev-parse --show-top
   feat/issue-404-not-an-issue
 
 printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
-"$real_git" -C "$primary" worktree lock "$root_worktree" --reason supacode
-"$real_git" -C "$primary" worktree lock "$active_worktree" --reason supacode
+"$real_git" -C "$primary" worktree lock "$active_worktree" --reason reserved
 
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
+
+# Record any retired integration call without access to the real installation.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
+exit 70
+EOF
+chmod +x "$fake_bin/supacode"
 
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
@@ -162,37 +169,6 @@ esac
 EOF
 chmod +x "$fake_bin/gh"
 
-supacode_id=$(jq -nr --arg value "${root_worktree%/}/" '$value | @uri')
-active_supacode_id=$(jq -nr --arg value "${active_worktree%/}/" '$value | @uri')
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-set -eu
-
-case "${1:-}:${2:-}:${3:-}" in
-  worktree:list:*)
-    focused=false
-    for argument in "$@"; do
-      [ "$argument" != "--focused" ] || focused=true
-    done
-    if [ "$focused" = "true" ]; then
-      printf '%s\tunpinned\n' "$SUPACODE_FOCUSED_ID"
-    else
-      printf '%s\tunpinned\n' "$SUPACODE_TEST_ID"
-      printf '%s\tunpinned\n' "$SUPACODE_FOCUSED_ID"
-    fi
-    ;;
-  worktree:delete:*)
-    "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree unlock "$SUPACODE_TEST_PATH"
-    "$REAL_GIT" -C "$CLEAN_PRIMARY" worktree remove "$SUPACODE_TEST_PATH"
-    ;;
-  *)
-    printf 'unexpected supacode call: %s\n' "$*" >&2
-    exit 70
-    ;;
-esac
-EOF
-chmod +x "$fake_bin/supacode"
-
 run_clean() {
   PATH="$fake_bin:$PATH" \
   REAL_GIT="$real_git" \
@@ -200,9 +176,6 @@ run_clean() {
   GH_ISSUE_GRAPH="$fixture_directory/clean-graph.json" \
   CLEAN_REMOTE="$remote" \
   CLEAN_PRIMARY="$primary" \
-  SUPACODE_TEST_ID="$supacode_id" \
-  SUPACODE_FOCUSED_ID="$active_supacode_id" \
-  SUPACODE_TEST_PATH="$root_worktree" \
   "$clean_command" "$@"
 }
 
@@ -210,7 +183,7 @@ plan_output=$(cd "$primary" && run_clean example/agent-skills 60)
 printf '%s\n' "$plan_output" | grep -F \
   'Clean plan: issue #60 Completed effort, with its sub-issues' >/dev/null
 printf '%s\n' "$plan_output" | grep -F 'Stable branch: main at ' >/dev/null
-printf '%s\n' "$plan_output" | grep -F "$root_worktree [feat/issue-60-root] via supacode" >/dev/null
+printf '%s\n' "$plan_output" | grep -F "$root_worktree [feat/issue-60-root] via git" >/dev/null
 printf '%s\n' "$plan_output" | grep -F "$child_worktree [feat/issue-61-child] via git" >/dev/null
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-62-dirty: worktree is dirty or unavailable' >/dev/null
@@ -221,7 +194,7 @@ printf '%s\n' "$plan_output" | grep -F \
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-65-protected: remote branch is protected' >/dev/null
 printf '%s\n' "$plan_output" | grep -F \
-  'feat/issue-66-active: worktree is active in Supacode' >/dev/null
+  'feat/issue-66-active: worktree is locked' >/dev/null
 # The name of the branch of open issue #75 also names #62, which is in scope.
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-75-port-62-fixes: issue #75 is open' >/dev/null
@@ -356,5 +329,7 @@ if detached_output=$(cd "$primary" && run_clean example/agent-skills 71 2>&1); t
 fi
 printf '%s\n' "$detached_output" | grep -F 'the primary checkout has no current branch' >/dev/null
 "$real_git" -C "$primary" switch -q feat/issue-71-stable
+
+[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue clean command tests passed\n'
