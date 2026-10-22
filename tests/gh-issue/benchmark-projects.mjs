@@ -30,7 +30,7 @@ for (let organization = 0; organization < 20; organization++) {
   }
   large.organizations[owner] = { projectSync: { boards } };
   for (let repository = 0; repository < 10; repository++) {
-    large.repositories[owner + '/repo' + repository] = { worktreeManager: 'git' };
+    large.repositories[owner + '/repo' + repository] = { taskBaseBranch: 'main' };
   }
 }
 const cases = [

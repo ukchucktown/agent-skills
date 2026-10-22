@@ -54,8 +54,6 @@ printf 'local only\n' >>"$dirty_worktree/dirty.txt"
 "$real_git" -C "$dirty_worktree" add dirty.txt
 "$real_git" -C "$dirty_worktree" commit -q -m 'Diverge locally'
 printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
-"$real_git" -C "$primary" worktree lock "$root_worktree" --reason supacode
-"$real_git" -C "$primary" worktree lock "$active_worktree" --reason supacode
 
 remote=$(CDPATH= cd -- "$remote" && pwd -P)
 primary=$("$real_git" -C "$primary" rev-parse --show-toplevel)
@@ -66,6 +64,14 @@ protected_worktree=$("$real_git" -C "$protected_worktree" rev-parse --show-tople
 
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
+
+# Record any retired integration call without access to the real installation.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
+exit 70
+EOF
+chmod +x "$fake_bin/supacode"
 
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
@@ -133,51 +139,6 @@ esac
 EOF
 chmod +x "$fake_bin/gh"
 
-root_supacode_id=$(jq -nr --arg value "${root_worktree%/}/" '$value | @uri')
-active_supacode_id=$(jq -nr --arg value "${active_worktree%/}/" '$value | @uri')
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-set -eu
-
-case "${1:-}:${2:-}:${3:-}" in
-  worktree:list:*)
-    focused=false
-    for argument in "$@"; do
-      [ "$argument" != "--focused" ] || focused=true
-    done
-    if [ "$focused" = "true" ]; then
-      printf '%s\tunpinned\n' "$SUPACODE_ACTIVE_ID"
-    else
-      printf '%s\tunpinned\n' "$SUPACODE_ROOT_ID"
-      printf '%s\tunpinned\n' "$SUPACODE_ACTIVE_ID"
-    fi
-    ;;
-  worktree:delete:*)
-    id=
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = "--worktree" ]; then
-        id=$2
-        break
-      fi
-      shift
-    done
-    case "$id" in
-      "$SUPACODE_ROOT_ID") path=$SUPACODE_ROOT_PATH ;;
-      "$SUPACODE_ACTIVE_ID") path=$SUPACODE_ACTIVE_PATH ;;
-      *) exit 70 ;;
-    esac
-    printf 'supacode worktree delete %s\n' "$id" >>"$GH_CALL_LOG"
-    "$REAL_GIT" -C "$CANCEL_PRIMARY" worktree unlock "$path"
-    "$REAL_GIT" -C "$CANCEL_PRIMARY" worktree remove --force "$path"
-    ;;
-  *)
-    printf 'unexpected supacode call: %s\n' "$*" >&2
-    exit 70
-    ;;
-esac
-EOF
-chmod +x "$fake_bin/supacode"
-
 call_log=$temporary_directory/gh-calls.log
 : >"$call_log"
 graphql_log=$temporary_directory/graphql-calls.log
@@ -195,10 +156,6 @@ run_cancel() {
   GH_TRUNCATED="${GH_TRUNCATED:-false}" \
   CANCEL_REMOTE="$remote" \
   CANCEL_PRIMARY="$primary" \
-  SUPACODE_ROOT_ID="$root_supacode_id" \
-  SUPACODE_ACTIVE_ID="$active_supacode_id" \
-  SUPACODE_ROOT_PATH="$root_worktree" \
-  SUPACODE_ACTIVE_PATH="$active_worktree" \
   "$cancel_command" "$@"
 }
 
@@ -220,7 +177,7 @@ printf '%s\n' "$plan_output" | grep -F \
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-81-dirty-divergent: local and remote tips differ; worktree has uncommitted changes' >/dev/null
 printf '%s\n' "$plan_output" | grep -F \
-  'feat/issue-82-active: open pull request will close: https://github.com/example/agent-skills/pull/182; worktree is active in Supacode' >/dev/null
+  'feat/issue-82-active: open pull request will close: https://github.com/example/agent-skills/pull/182' >/dev/null
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-83-protected: remote branch is protected' >/dev/null
 printf '%s\n' "$plan_output" | grep -F 'feat/issue-999-unrelated' >/dev/null && {
@@ -231,6 +188,14 @@ printf '%s\n' "$plan_output" | grep -F 'feat/issue-999-unrelated' >/dev/null && 
 [ -d "$root_worktree" ]
 [ -d "$dirty_worktree" ]
 [ -d "$active_worktree" ]
+
+"$real_git" -C "$primary" worktree lock "$root_worktree" --reason reserved
+locked_plan=$(cd "$primary" && run_cancel example/agent-skills 81)
+printf '%s\n' "$locked_plan" | grep -F \
+  'feat/issue-80-root: worktree is locked' >/dev/null
+[ -d "$root_worktree" ]
+[ ! -s "$call_log" ]
+"$real_git" -C "$primary" worktree unlock "$root_worktree"
 
 if truncated_output=$(cd "$primary" && GH_TRUNCATED=true run_cancel example/agent-skills 81 2>&1); then
   echo 'cancel accepted truncated GitHub data' >&2
@@ -286,7 +251,7 @@ if (cd "$primary" && GH_FAIL_ISSUE=80 run_cancel --confirm "$token" example/agen
 fi
 grep -F 'pr close 182 --repo example/agent-skills' "$call_log" >/dev/null
 grep -F 'issue close 80 --repo example/agent-skills --reason not planned' "$call_log" >/dev/null
-if grep -E '^(supacode worktree delete|git (worktree remove|branch -D|push origin --delete))' "$call_log" >/dev/null; then
+if grep -E '^(git (worktree remove|branch -D|push origin --delete))' "$call_log" >/dev/null; then
   echo 'cancel removed an artifact after failing to close an issue' >&2
   exit 1
 fi
@@ -334,7 +299,7 @@ issue_close_line() {
 pr_close_line=$(grep -n -m 1 '^pr close ' "$call_log" | cut -d: -f1)
 first_issue_close_line=$(grep -n -m 1 '^issue close ' "$call_log" | cut -d: -f1)
 last_issue_close_line=$(grep -n '^issue close ' "$call_log" | tail -n 1 | cut -d: -f1)
-first_cleanup_line=$(grep -n -m 1 -E '^(supacode worktree delete|git (worktree remove|branch -D|push origin --delete))' "$call_log" | cut -d: -f1)
+first_cleanup_line=$(grep -n -m 1 -E '^(git (worktree remove|branch -D|push origin --delete))' "$call_log" | cut -d: -f1)
 [ "$pr_close_line" -lt "$first_issue_close_line" ] || {
   echo 'cancel did not close pull requests before issues' >&2
   exit 1
@@ -362,5 +327,7 @@ done
 "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/issue-83-protected
 "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/issue-999-unrelated
 "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/issue-999-unrelated
+
+[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue cancel command tests passed\n'

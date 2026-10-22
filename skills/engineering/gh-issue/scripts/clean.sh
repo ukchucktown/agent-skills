@@ -437,15 +437,6 @@ else
   awk -F '\t' '$3 != "out" { print $1 }' "$branch_issues" | sort -u >"$candidate_branches"
 fi
 
-supacode_worktrees=$temporary_directory/supacode-worktrees
-supacode_focused=$temporary_directory/supacode-focused
-: >"$supacode_worktrees"
-: >"$supacode_focused"
-if command -v supacode >/dev/null 2>&1; then
-  supacode worktree list --timeout 5 >"$supacode_worktrees" 2>/dev/null || : >"$supacode_worktrees"
-  supacode worktree list --focused --timeout 5 >"$supacode_focused" 2>/dev/null || : >"$supacode_focused"
-fi
-
 remove_worktrees=$temporary_directory/remove-worktrees
 remove_local=$temporary_directory/remove-local
 remove_remote=$temporary_directory/remove-remote
@@ -507,15 +498,8 @@ while IFS= read -r branch; do
   if [ "$worktree_count" -eq 1 ]; then
     worktree_path=$(printf '%s\n' "$branch_worktrees" | cut -f1)
     worktree_locked=$(printf '%s\n' "$branch_worktrees" | cut -f3)
-    worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
     if [ "$worktree_path" = "$current_checkout" ]; then
       reason="branch is active in the current checkout"
-    elif awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_focused"; then
-      if [ "$operation" = "cancel" ]; then
-        warning="${warning}${warning:+; }worktree is active in Supacode"
-      else
-        reason="worktree is active in Supacode: $worktree_path"
-      fi
     fi
     if [ -z "$reason" ]; then
       if worktree_status=$(git -C "$worktree_path" status --porcelain=v1 2>/dev/null); then
@@ -535,11 +519,7 @@ while IFS= read -r branch; do
       fi
     fi
     if [ -z "$reason" ] && [ "$worktree_locked" = "true" ]; then
-      if awk -F '\t' -v id="$worktree_id" '$1 == id { found = 1 } END { exit !found }' "$supacode_worktrees"; then
-        worktree_manager=supacode
-      else
-        reason="worktree is locked outside Supacode: $worktree_path"
-      fi
+      reason="worktree is locked: $worktree_path"
     fi
   fi
 
@@ -733,15 +713,10 @@ done <"$close_issues"
 
 while IFS="$(printf '\t')" read -r worktree_path branch manager; do
   [ -n "$worktree_path" ] || continue
-  if [ "$manager" = "supacode" ]; then
-    worktree_id=$(jq -nr --arg value "${worktree_path%/}/" '$value | @uri')
-    supacode worktree delete --worktree "$worktree_id" --background --timeout 30
+  if [ "$operation" = "cancel" ]; then
+    git worktree remove --force --force "$worktree_path"
   else
-    if [ "$operation" = "cancel" ]; then
-      git worktree remove --force --force "$worktree_path"
-    else
-      git worktree remove "$worktree_path"
-    fi
+    git worktree remove "$worktree_path"
   fi
 done <"$remove_worktrees"
 

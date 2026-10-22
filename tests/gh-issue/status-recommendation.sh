@@ -10,6 +10,14 @@ trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
+# Record any retired integration call without access to the real installation.
+cat >"$fake_bin/supacode" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
+exit 70
+EOF
+chmod +x "$fake_bin/supacode"
+
 # The fake gh builds each status response from one issue tree. Omitted node
 # fields default to an open issue with no blockers, branches, or children.
 cat >"$fake_bin/gh" <<'EOF'
@@ -67,31 +75,6 @@ jq -n --argjson number "$number" --slurpfile tree "$GH_TREE" '
 EOF
 chmod +x "$fake_bin/gh"
 
-# The fake supacode tracks every Git worktree of the fixture repository. The
-# issue-221 worktree has two tabs. FAKE_SUPACODE_DOWN simulates a failed CLI.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-set -eu
-[ -z "${FAKE_SUPACODE_DOWN:-}" ] || exit 1
-case "${1:-}:${2:-}" in
-  worktree:list)
-    git -C "$FAKE_PRIMARY" worktree list --porcelain |
-      awk '/^worktree / { print substr($0, 10) "/" }' |
-      jq -Rr '@uri'
-    ;;
-  tab:list)
-    case "$4" in
-      *issue-221*) printf '%s\n' AAAA0000-0000-0000-0000-000000000001 AAAA0000-0000-0000-0000-000000000002 ;;
-    esac
-    ;;
-  *)
-    printf 'unexpected supacode call: %s\n' "$*" >&2
-    exit 70
-    ;;
-esac
-EOF
-chmod +x "$fake_bin/supacode"
-
 tree=$temporary_directory/tree.json
 jq -n '
   {
@@ -138,7 +121,6 @@ git -C "$temporary_directory/issue-221" commit -q -m 'Add issue 221 work'
 printf 'draft\n' >"$temporary_directory/issue-221/draft.txt"
 issue_221_path=$(git -C "$primary" worktree list --porcelain |
   awk '/^worktree .*issue-221$/ { print substr($0, 10) }')
-issue_221_id=$(jq -nr --arg value "$issue_221_path/" '$value | @uri')
 git -C "$primary" worktree add -q -b feat/issue-2410-unrelated "$temporary_directory/issue-2410" main
 
 run_status() {
@@ -168,22 +150,13 @@ expect_line "$output" '- #211 Linked task'
 expect_line "$output" '  Worktree: none (linked branch feat/issue-211-linked)'
 expect_line "$output" '- #221 Local task'
 expect_line "$output" "  Worktree: $issue_221_path [feat/issue-221-local]"
-expect_line "$output" '  Evidence: Supacode tabs 2, branch commits 1 (last less than a minute ago), uncommitted changes 1'
+expect_line "$output" '  Evidence: branch commits 1 (last less than a minute ago), uncommitted changes 1'
 expect_line "$output" 'Next: start issue #241'
 queried=$(paste -sd ' ' "$call_log")
 [ "$queried" = "200 210 220 223 240" ] || {
   printf 'unexpected queries: %s\n' "$queried" >&2
   exit 1
 }
-
-# A tab of the current Supacode session does not count as another session.
-output=$(SUPACODE_WORKTREE_ID="$issue_221_id" \
-  SUPACODE_TAB_ID=aaaa0000-0000-0000-0000-000000000001 run_status 200)
-expect_line "$output" '  Evidence: Supacode tabs 1, branch commits 1 (last less than a minute ago), uncommitted changes 1'
-
-# A failed Supacode CLI does not hide the Git evidence.
-output=$(FAKE_SUPACODE_DOWN=1 run_status 200)
-expect_line "$output" '  Evidence: Supacode unavailable, branch commits 1 (last less than a minute ago), uncommitted changes 1'
 
 # When every ready standalone issue is started, the walk recommends nothing.
 output=$(run_status 300)
@@ -204,5 +177,7 @@ query_count=$(wc -l <"$call_log" | tr -d ' ')
   printf 'expected 26 queries, got %s\n' "$query_count" >&2
   exit 1
 }
+
+[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue status recommendation tests passed\n'

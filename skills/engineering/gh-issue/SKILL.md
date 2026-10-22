@@ -10,9 +10,10 @@ tracker this skill supports. Issue creation, product planning, implementation,
 PR review, and merging remain separate user-directed work.
 
 Use the checked-in commands for each workflow. Do not reconstruct their reads,
-plans, Git operations, GitHub operations, or worktree-manager operations. Keep
-each path bounded: do not recursively fetch every descendant, search the full
+plans, Git operations, or GitHub operations. Keep each path bounded: do not recursively fetch every descendant, search the full
 pull-request inventory, or inspect unrelated branches and worktrees.
+
+Use native Git for all worktree operations.
 
 The current implementation supports `config`, `status`, `start`, `resume`, `finish`,
 `clean`, and `cancel`.
@@ -101,11 +102,10 @@ that the command will remove, warnings, and preserved artifacts. Planning is
 read-only and creates no saved plan file.
 
 Cancellation is allowed to discard unmerged commits, divergent local and
-remote tips, uncommitted changes, and worktrees active in Supacode. It never
+remote tips and uncommitted changes. It never
 removes the stable checkout, the default branch, a protected branch, an
-unrelated branch, an unavailable worktree, or a branch used by more than one
-worktree. Relay the
-command's plan. Do not reconstruct it.
+unrelated branch, a locked or unavailable worktree, or a branch that multiple
+worktrees use. Relay the command's plan. Do not reconstruct it.
 
 Request one confirmation immediately before you apply the plan. After
 confirmation, pass the exact displayed token:
@@ -117,7 +117,7 @@ confirmation, pass the exact displayed token:
 Keep `--local-only` on the confirmed command when it appeared on the plan. If
 the command rejects a stale token, relay the new plan and request confirmation
 again. Do not close, delete, or preserve individual artifacts with separate
-Git, GitHub, filesystem, or Supacode commands.
+Git, GitHub, or filesystem commands.
 
 </important>
 
@@ -170,20 +170,20 @@ corresponding branches:
 
 Pass `--local-only` before the selections only when the user wants to preserve
 remote branches. Relay the command's plan. Do not reconstruct it. Ordinary repository
-cleanup blocks dirty or Supacode-active worktrees and divergent local and
+cleanup blocks dirty or locked worktrees and divergent local and
 remote tips. It accepts a branch tip under either condition:
 
 - The stable branch contains the tip.
 - A merged pull request records the tip as its exact head.
 
 It also keeps the primary checkout, the stable, default, and protected
-branches, branches with open pull requests, unavailable worktrees, branches
+branches, branches with open pull requests, locked or unavailable worktrees, branches
 shared by multiple worktrees, and every unselected group.
 
 Treat force cleanup as separate explicit intent. Never infer it from `all` or
 from confirmation of an ordinary cleanup plan. Only when the user explicitly
 asks to force cleanup may you rerun discovery and planning with `--force`.
-Force makes dirty, active, divergent, and unmerged groups selectable and shows
+Force makes dirty, divergent, and unmerged groups selectable and shows
 those risks as warnings. It also removes a selected Git worktree if the
 worktree acquires a lock after the command creates the plan. It does not
 override the other protections.
@@ -253,7 +253,7 @@ an explicit issue, run one command from a checkout of the target repository:
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
 The command resolves and validates the hierarchy, existing work, effective
-configuration, branch layout, destination, and worktree manager. It
+configuration, branch layout, and destination. It
 checks ancestor branches for missing commits and applies the optional repository
 task base from [the start configuration](references/start-config.md). It assigns
 the authenticated user when the issue has no assignee. It preserves and reports
@@ -262,8 +262,8 @@ the GitHub-linked branch and worktree. After workspace verification, it applies
 the configured start values to assigned boards and returns a compact result.
 Relay that result and stop before implementation.
 
-Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`,
-`git`, or worktree-manager commands for start or resume. Do not delegate the
+Do not run separate `query.sh`, `project-config.sh`, `project-start.sh`, `gh`, or
+`git` commands for start or resume. Do not delegate the
 command to another agent.
 
 A project mapping result uses the config workflow above. A branch or worktree
@@ -275,14 +275,12 @@ same command once with the matching option:
 --branch BRANCH
 --base BRANCH
 --destination PATH
---manager auto|supacode|git
 --accept-in-use PATH
 ```
 
 The `accept-in-use` question comes before `start` or `resume` attaches an
-existing worktree that looks in use. The worktree has an open Supacode tab or
-uncommitted changes, and another session can work in it. The tab of the current
-session does not count. Rerun with the shown path only when the user confirms.
+existing worktree with uncommitted changes. Another session can work in it.
+If the user confirms, rerun the command with the shown path.
 If the user does not confirm, stop.
 
 Do not investigate beyond the command result. Other nonzero results are
@@ -360,8 +358,8 @@ read-only and creates no saved plan file.
 
 Relay the command's plan. Do not reconstruct it. The command preserves a branch
 when its name or a link refers to an open issue, also an issue outside the plan.
-It also preserves dirty or unavailable worktrees, the active checkout, protected
-branches, branches with open pull requests, divergent local and remote tips,
+It also preserves dirty, locked, or unavailable worktrees, the active checkout,
+protected branches, branches with open pull requests, divergent local and remote tips,
 and work that cannot be verified in the stable branch. Stop when nothing is
 eligible.
 
@@ -375,7 +373,7 @@ only the displayed plan with its exact token:
 Keep `--local-only` on the confirmed command when it appeared on the plan. If
 the command rejects a stale token, relay the new plan and request confirmation
 again. Do not delete a preserved item manually and do not approximate cleanup
-with separate Git, GitHub, filesystem, or Supacode commands.
+with separate Git, GitHub, or filesystem commands.
 
 </important>
 
@@ -402,7 +400,7 @@ standalone issue with no branch evidence in GitHub hierarchy order. Descend
 through compound issues as needed. When a compound issue has no candidate,
 continue with its next sibling. Report the started issues that the walk skipped,
 with their worktree evidence. Do not classify a skipped issue as paused or
-active. An open Supacode tab stays open after work stops, so the user decides.
+active. Git evidence does not establish whether another session uses a worktree.
 Explain the evidence and wait for the user to choose or override it.
 
 </important>
