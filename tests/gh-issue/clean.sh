@@ -57,6 +57,12 @@ create_worktree feat/issue-68-merged-task "$open_task_worktree" main open-task.t
 create_worktree feat/issue-70-local-only "$local_only_worktree" main local-only.txt
 create_worktree feat/issue-75-port-62-fixes "$open_other_worktree" main port.txt
 "$real_git" -C "$primary" branch feat/issue-404-not-an-issue main
+# Issue #69 has no linked branch. The first branch fits the template and also
+# names open issue #75. The second branch only contains the number 69.
+"$real_git" -C "$primary" branch feat/issue-69-follow-up-75 main
+"$real_git" -C "$primary" branch fix/69-typo main
+# A merged branch of #69 that exists only on the remote, with a branch record.
+"$real_git" -C "$primary" branch feat/issue-69-remote-copy main
 "$real_git" -C "$primary" branch feat/issue-73-foreign-parent main
 
 remote=$(CDPATH= cd -- "$remote" && pwd -P)
@@ -96,7 +102,12 @@ open_other_worktree=$("$real_git" -C "$open_other_worktree" rev-parse --show-top
   feat/issue-70-local-only \
   feat/issue-73-foreign-parent \
   feat/issue-75-port-62-fixes \
+  feat/issue-69-follow-up-75 \
+  fix/69-typo \
+  feat/issue-69-remote-copy \
   feat/issue-404-not-an-issue
+"$real_git" -C "$primary" branch -D feat/issue-69-remote-copy >/dev/null
+"$real_git" -C "$primary" config branch.feat/issue-69-remote-copy.gh-issue 69
 
 printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
 "$real_git" -C "$primary" worktree lock "$active_worktree" --reason reserved
@@ -196,8 +207,17 @@ printf '%s\n' "$plan_output" | grep -F \
 printf '%s\n' "$plan_output" | grep -F \
   'feat/issue-66-active: worktree is locked' >/dev/null
 # The name of the branch of open issue #75 also names #62, which is in scope.
+# The shared branch rule assigns the branch to #75 only.
+if printf '%s\n' "$plan_output" | grep -F 'feat/issue-75-port-62-fixes' >/dev/null; then
+  echo 'clean plan included the branch of open issue #75' >&2
+  exit 1
+fi
+# A merged branch of #69 that also names an open issue stays.
 printf '%s\n' "$plan_output" | grep -F \
-  'feat/issue-75-port-62-fixes: issue #75 is open' >/dev/null
+  'feat/issue-69-follow-up-75: issue #75 is open' >/dev/null
+# A possible branch stays, with the reason.
+printf '%s\n' "$plan_output" | grep -F \
+  'fix/69-typo: name contains #69 but does not fit feat/issue-{number}-{slug}' >/dev/null
 # The parent of #73 is issue 60 of another repository, not #60.
 if printf '%s\n' "$plan_output" | grep -E 'feat/issue-(67|68|70|73|404)-' >/dev/null; then
   echo 'clean plan included a branch outside issue #60 and its sub-issues' >&2
@@ -255,7 +275,12 @@ printf '%s\n' "$apply_output" | grep -F \
 printf '%s\n' "$apply_output" | grep -F \
   'Worktrees to remove: 2' >/dev/null
 printf '%s\n' "$apply_output" | grep -F \
-  'Cleanup applied: 2 worktree(s), 2 local branch(es), 2 remote branch(es).' >/dev/null
+  'Cleanup applied: 2 worktree(s), 2 local branch(es), 3 remote branch(es).' >/dev/null
+# Cleanup removes the record of a removed branch that had no local copy.
+if "$real_git" -C "$primary" config --get branch.feat/issue-69-remote-copy.gh-issue >/dev/null; then
+  echo 'cleanup left the record of a removed remote-only branch' >&2
+  exit 1
+fi
 if printf '%s\n' "$apply_output" | grep -F "$root_worktree" >/dev/null; then
   echo 'cleanup confirmation repeated worktree paths' >&2
   exit 1
@@ -281,7 +306,7 @@ fi
 [ -d "$protected_worktree" ]
 [ -d "$active_worktree" ]
 [ -d "$open_other_worktree" ]
-for branch in feat/issue-73-foreign-parent feat/issue-75-port-62-fixes; do
+for branch in feat/issue-73-foreign-parent feat/issue-75-port-62-fixes feat/issue-69-follow-up-75 fix/69-typo; do
   "$real_git" -C "$primary" show-ref --verify --quiet "refs/heads/$branch"
   "$real_git" --git-dir="$remote" show-ref --verify --quiet "refs/heads/$branch"
 done

@@ -68,6 +68,8 @@ done
 "$real_git" -C "$primary" worktree remove "$orphan_local_worktree"
 "$real_git" -C "$primary" worktree remove "$orphan_remote_worktree"
 "$real_git" -C "$primary" branch -D feat/orphan-remote >/dev/null
+# Start records remote-only branches too. Git keeps that record without a local branch.
+"$real_git" -C "$primary" config branch.feat/orphan-remote.gh-issue 7
 
 printf 'diverge\n' >>"$leftover_worktree/leftover.txt"
 "$real_git" -C "$leftover_worktree" add leftover.txt
@@ -328,6 +330,10 @@ for branch in feat/orphan-both feat/orphan-remote; do
     exit 1
   fi
 done
+if "$real_git" -C "$primary" config --get branch.feat/orphan-remote.gh-issue >/dev/null; then
+  echo 'repository cleanup left the record of a removed remote-only branch' >&2
+  exit 1
+fi
 if "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/squash-merged; then
   echo 'repository cleanup --all left the squash-merged remote branch' >&2
   exit 1

@@ -1,17 +1,20 @@
 # Workflow configuration
 
 The skill uses one local file: `~/.config/agent-skills/config.json`.
-`AGENT_SKILLS_CONFIG` selects another file for isolated use. The commands require
-Node.js 22 or later, Git, GitHub CLI, and jq. The Node helper uses built-in modules.
-It requires no package installation or build step. The existing shell commands
-remain the public entry points.
+`AGENT_SKILLS_CONFIG` selects another file for isolated use. A shared workspace
+can also supply layout settings in a `.gh-issue.json` file. The
+[workspace file](#workspace-file) section describes that file.
+
+The commands require Node.js 22 or later, Git, GitHub CLI, and jq. The Node
+helper uses built-in modules. It requires no package installation or build step.
+The existing shell commands remain the public entry points.
 
 ## Inheritance
 
 Precedence runs from lowest to highest: global settings, organization settings,
-repository settings, and explicit invocation options. The organization key is
-the repository owner. Personal account owners also work as keys. A board owner
-can differ from the repository owner.
+the workspace file, repository settings, and explicit invocation options. The
+organization key is the repository owner. Personal account owners also work as
+keys. A board owner can differ from the repository owner.
 
 The `config` result includes each effective setting and its source. Omitted
 settings inherit. Board mappings merge by owner and project number. Field
@@ -183,12 +186,144 @@ The preview shows the migration. It never authorizes automatic board assignment.
 The skill uses native Git for all worktree operations. The resolver ignores the
 retired `worktreeManager` setting at every configuration tier. A confirmed config
 write removes that setting from the saved configuration.
-`worktreeRoot` contains a directory for each repository. Without an explicit
-root, the skill uses a worktrees directory beside the primary checkout's container.
 
-`integrationBranchTemplate`, `taskBranchTemplate`, and `worktreeTemplate` require
-`{number}` and `{slug}`. Explicit branch options override resolved settings.
-Existing issue branches take precedence over templates.
+These settings control branch names and worktree paths:
+
+| Setting | Default | Variables |
+|---|---|---|
+| `taskBranchTemplate` | `feat/issue-{number}-{slug}` | `{number}`, `{slug}`, `{key}` |
+| `integrationBranchTemplate` | `integration/issue-{number}-{slug}` | `{number}`, `{slug}`, `{key}` |
+| `worktreeRoot` | A `worktrees` folder beside the folder that holds the primary checkout | None |
+| `worktreeTemplate` | `issue-{number}-{slug}` | `{number}`, `{slug}`, `{key}` |
+| `worktreePath` | None | `{root}`, `{workspace}`, `{owner}`, `{repo}`, `{checkout}`, `{branch}`, `{number}`, `{slug}`, `{key}` |
+| `branchKey` | None | None |
+| `taskBaseBranch` | None | None |
+
+An issue without sub-issues uses the task branch template. An issue with
+sub-issues uses the integration branch template, and so does each ancestor of
+the issue. The resolver rejects a variable that the setting does not list.
+
+The variables have these values:
+
+- `{number}` is the issue number.
+- `{slug}` is the issue title in lowercase ASCII letters and digits. Each run of
+  other characters becomes one hyphen. The slug has a maximum of 48 characters.
+- `{key}` is the effort key that `branchKey` extracts from the issue title.
+- `{root}` is the value of `worktreeRoot`, or its default.
+- `{workspace}` is the folder that holds `.gh-issue.json`.
+- `{owner}` and `{repo}` are the GitHub owner and the repository name.
+- `{checkout}` is the folder name of the primary checkout.
+- `{branch}` is the branch of the worktree. A slash in the branch creates
+  nested folders.
+
+`worktreePath` holds the complete destination. Without `worktreePath`, the
+destination is `{root}/{repo}/` followed by the rendered `worktreeTemplate`.
+Only a `worktreePath` that the workspace file supplies can use `{workspace}`.
+Start rejects a rendered path that is not absolute. Start also rejects a
+variable value that adds an empty, `.`, or `..` folder to the path. The values of
+`{root}` and `{workspace}` are exempt.
+
+### Effort key
+
+`branchKey` defines the source of `{key}`. The only source is a title prefix:
+a JavaScript regular expression with one capture group.
+
+```json
+{"branchKey": {"from": "titlePrefix", "pattern": "^\\[([A-Z]+-[0-9]+)\\]"}}
+```
+
+The skill converts the captured text to lowercase and makes no other change.
+With this pattern, the title `[TICKET-42] Add export` gives the key `ticket-42`.
+A template that uses `{key}` requires `branchKey`. When the issue title has no
+match, start returns a question and makes no change. Start rejects a rendered
+branch name that `git check-ref-format --branch` rejects.
+
+A branch template without `{number}` can give one name to related issues. For
+example, `feat/{key}` gives the branch `feat/ticket-42` to every issue with the
+title prefix `[TICKET-42]`, also in different repositories.
+
+### Branch discovery
+
+Start, status, finish, clean, and cancel use one rule to decide which branches
+belong to an issue:
+
+1. The linked branches of the issue in the same repository come first.
+2. When the issue has no linked branch, the rule uses a name match. A branch
+   matches when it fits the effective branch template with the issue number in
+   the `{number}` position. `{key}` matches only the key of the issue, and
+   `{slug}` matches only lowercase letters and digits in groups that hyphens
+   separate. The issue number cannot touch another digit. For a template
+   without `{number}`, only the rendered branch name matches.
+3. A name match never counts when the branch record names another issue. The
+   [branch records](#branch-records) section describes the record.
+
+For the template `feat/issue-{number}-{slug}`, issue #3 matches
+`feat/issue-3-fix-timeout`. Issue #3 does not match
+`feat/issue-12-retry-3-times`, because 12 is in the `{number}` position.
+
+A possible branch contains the issue number between separators, but the branch
+does not match. For example, `fix/3-timeout` is a possible branch for issue #3.
+A branch that also fits the template with another number from its name is
+ambiguous, and it is a possible branch too. For example, the template
+`{slug}-{number}-{slug}` fits `fix-3-retry-12-x` for both #3 and #12.
+A possible branch never counts as a match:
+
+- Start asks a question when nothing matches and possible branches exist. The
+  candidates are the possible branches and the name of a new branch.
+- Finish asks a question when no worktree matches and worktrees on possible
+  branches exist.
+- Status does not count a possible branch as started work.
+- Clean and cancel do not remove a possible branch. The plan lists the branch
+  as preserved, with the reason.
+
+Explicit branch options override resolved settings. Existing issue branches take
+precedence over templates. A `--branch` value that does not exist names a new
+branch, and start creates that branch.
+
+### Branch records
+
+GitHub cannot list the issues that link a given branch. Only a full read of the
+open issues could prove that no other issue links a branch. Thus, the skill
+keeps a local record instead. When start creates or attaches a branch, start
+writes the issue number into the Git configuration of the clone, for example
+`branch.feat/ticket-42.gh-issue = 12`. Git deletes the record when it deletes
+the local branch. Clean, cancel, and repository cleanup also delete the record
+when they remove the last copy of a branch. A record of a branch that no longer
+exists in the clone is obsolete and does not count.
+
+Every command reads the record:
+
+- A linked branch whose record names another issue is a conflict. Start and
+  finish stop and show the conflict before they select a branch, also for an
+  explicit `--branch`. Status does not count the branch as a local worktree of
+  the issue. Clean and cancel keep the branch.
+- A name match or a possible branch whose record names another issue does not
+  belong to the issue.
+- Start and finish refuse an explicit `--branch` value whose record names
+  another issue.
+- A rendered name from a template without `{number}` belongs to the issue only
+  through a link or a record of that issue, because other issues can render the
+  same name. Without a link or a record, the branch is unverified.
+  Start asks before it uses an unverified branch. Finish asks before it selects
+  one. Status does not count it as started work. Clean and cancel keep it.
+
+The record covers only the clone that started the work. A branch that another
+clone or another person started has no record here. For such a branch, start
+asks the question for an unverified branch and does not refuse it. Start also
+refuses a destination that holds a worktree on a different branch.
+
+When branches already belong to the issue, `finish --branch` must name one of
+them, also when no worktree holds that branch. Without `--branch`, finish
+reports an issue branch with no worktree and asks you to resume the issue.
+
+### Clean coverage
+
+Clean with an issue number reads only that issue and the issues whose numbers
+appear in branch names. A branch name without an issue number thus enters the
+plan only through the cleaned issue itself. To remove the shared
+branch of a sub-issue, clean that sub-issue, or use repository cleanup.
+
+### Task base
 
 `taskBaseBranch` selects an existing base for tasks without direct children.
 Start omits intermediate ancestor branches for those tasks. Finish uses that
@@ -198,3 +333,48 @@ pull request keeps its base. Compound issues still use their ancestor hierarchy.
 Without a task base, start compares existing ancestor branches with the next
 higher branch and compares the highest ancestor with the default branch. Missing
 commits require a base choice. The command preserves ancestor branches.
+
+## Workspace file
+
+A workspace can document its layout rules in a `.gh-issue.json` file. The skill
+searches for this file in the folder of the primary checkout. Then the skill
+searches each parent folder, up to and including the home directory. The
+nearest file applies. For a checkout outside the home directory, the search
+continues to the root of the file system.
+
+The file can hold only these settings:
+
+- `worktreePath`
+- `taskBranchTemplate`
+- `integrationBranchTemplate`
+- `branchKey`
+- `taskBaseBranch`
+
+Any other setting fails validation with a message that names the setting.
+`worktreeRoot` is specific to one machine, and board mappings are personal
+settings. Thus, both stay in the local file.
+
+The workspace tier is between the organization tier and the repository tier. A
+repository setting in the local file overrides the workspace file. The `config`
+result names the file in its `workspace` value. The result also shows the file
+as the source of each setting that the file supplies. Config never writes the
+workspace file. Config finds the primary checkout from the current directory
+when that checkout belongs to the target repository. `--checkout PATH` selects
+another primary checkout.
+
+This example uses synthetic names. The folder `~/Github/example-workspace/app`
+holds the checkouts `web` for `example/app-web` and `api` for `example/app-api`.
+The folder also holds this `.gh-issue.json` file:
+
+```json
+{
+  "worktreePath": "{workspace}/.scratch/worktrees/{branch}/{checkout}",
+  "taskBranchTemplate": "feat/{key}",
+  "branchKey": {"from": "titlePrefix", "pattern": "^\\[([A-Z]+-[0-9]+)\\]"}
+}
+```
+
+The issues `example/app-web#12` and `example/app-api#7` both have the title
+prefix `[TICKET-42]`. With this file, both issues get the branch
+`feat/ticket-42`. The worktrees are `app/.scratch/worktrees/feat/ticket-42/web`
+and `app/.scratch/worktrees/feat/ticket-42/api`.

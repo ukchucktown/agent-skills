@@ -91,8 +91,8 @@ fi
 
 local_worktrees=none
 local_started=false
-worktree_branches_json='[]'
 worktree_rows_json='[]'
+primary=
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   current_remote=$(git remote get-url origin 2>/dev/null || true)
   case "$current_remote" in
@@ -104,32 +104,9 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   current_repository=${current_repository%.git}
 
   if [ "$current_repository" = "$canonical_repository" ]; then
-    local_matches=$(git worktree list --porcelain | awk -v number="$number" '
-      function emit() {
-        if (path != "" && branch ~ ("(^|[-_/])" number "([-_/]|$)")) {
-          print path " [" branch "]"
-        }
-      }
-      /^worktree / {
-        path = substr($0, 10)
-        next
-      }
-      /^branch refs\/heads\// {
-        branch = substr($0, 19)
-        next
-      }
-      /^$/ {
-        emit()
-        path = ""
-        branch = ""
-      }
-      END { emit() }
-    ')
-    if [ -n "$local_matches" ]; then
-      local_started=true
-      local_worktrees=$(printf '%s\n' "$local_matches" | paste -sd ',' - | sed 's/,/, /g')
-    fi
-    worktree_rows_json=$(git worktree list --porcelain | awk '
+    worktree_list=$(git worktree list --porcelain)
+    primary=$(printf '%s\n' "$worktree_list" | awk '/^worktree / { print substr($0, 10); exit }')
+    worktree_rows_json=$(printf '%s\n' "$worktree_list" | awk '
       function emit() {
         if (path != "" && branch != "") print path "\t" branch
       }
@@ -137,8 +114,39 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       /^branch refs\/heads\// { branch = substr($0, 19); next }
       END { emit() }
     ' | jq -Rnc '[inputs | select(length > 0) | split("\t") | {path: .[0], branch: .[1]}]')
-    worktree_branches_json=$(printf '%s' "$worktree_rows_json" | jq -c '[.[].branch]')
   fi
+fi
+
+# Classify issue branches against local worktree branches with the rule that start and finish share.
+# Input is a JSON array of {number, title, compound, linked}. Output adds matches to each issue.
+classify() {
+  if [ "$worktree_rows_json" = '[]' ]; then
+    jq -c 'map(. + {matches: []})'
+    return 0
+  fi
+  classify_input=$(jq -c --argjson rows "$worktree_rows_json" '{names: [$rows[].branch], issues: .}')
+  if ! classified=$(printf '%s' "$classify_input" |
+    "$script_directory/branch-discovery.sh" "$canonical_repository" --checkout="$primary"); then
+    echo "status.sh: $(printf '%s' "$classified" | jq -r '.message // "branch discovery failed"' 2>/dev/null || true)" >&2
+    exit 2
+  fi
+  printf '%s' "$classify_input" | jq -c --argjson classified "$classified" '
+    [.issues | to_entries[] | .value + {matches: $classified.issues[.key].matches}]'
+}
+
+focused_issue=$(printf '%s' "$status_json" | jq -c --arg repository "$canonical_repository" '
+  .data.repository.issue | [{
+    number,
+    title,
+    compound: (.subIssues.totalCount > 0),
+    linked: [.linkedBranches.nodes[] |
+      select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) | .ref.name]
+  }]' | classify)
+local_matches=$(jq -rn --argjson issue "$focused_issue" --argjson rows "$worktree_rows_json" '
+  $rows[] | select(.branch as $branch | $issue[0].matches | index($branch)) | .path + " [" + .branch + "]"')
+if [ -n "$local_matches" ]; then
+  local_started=true
+  local_worktrees=$(printf '%s\n' "$local_matches" | paste -sd ',' - | sed 's/,/, /g')
 fi
 
 if [ "$linked_branch_count" -gt 0 ] || [ "$project_started" = "true" ] || [ "$local_started" = "true" ]; then
@@ -156,12 +164,9 @@ walk_query_limit=25
 walk_depth_limit=8
 
 # Ready children are open and unblocked. A standalone child with a linked
-# branch or a local worktree branch that contains its number is started work.
+# branch or a local worktree on a matching branch is started work. A branch
+# that only contains the child number is not evidence.
 ready_children_filter='
-  def started:
-    (.number | tostring) as $issue |
-    .linkedBranches.totalCount > 0 or
-    any($branches[]; test("(^|[-_/])" + $issue + "([-_/]|$)"));
   [.data.repository.issue.subIssues.nodes[] |
     select(.state == "OPEN") |
     select([.blockedBy.nodes[] | select(.state == "OPEN")] | length == 0) |
@@ -169,16 +174,25 @@ ready_children_filter='
       number,
       title,
       depth: $depth,
-      linked: [.linkedBranches.nodes[].ref.name],
       compound: (.subIssues.totalCount > 0),
-      started: (.subIssues.totalCount == 0 and started)
+      linkedTotal: .linkedBranches.totalCount,
+      linked: [.linkedBranches.nodes[] |
+        select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) | .ref.name],
+      allLinked: [.linkedBranches.nodes[].ref.name]
     }]
 '
 
+ready_children() {
+  # Separate steps keep a discovery failure from disappearing inside a pipeline.
+  ready=$(jq -c --argjson depth "$1" --arg repository "$canonical_repository" "$ready_children_filter") || exit 2
+  ready=$(printf '%s' "$ready" | classify) || exit 2
+  printf '%s' "$ready" | jq -c --argjson rows "$worktree_rows_json" '
+      map(. + {started: ((.compound | not) and
+        (.linkedTotal > 0 or any(.matches[]; . as $branch | any($rows[]; .branch == $branch))))})'
+}
+
 if [ "$issue_state" = "OPEN" ] && [ "$issue_type" = "compound" ] && [ "$child_loaded" -eq "$child_total" ]; then
-  pending=$(printf '%s' "$status_json" | jq -c \
-    --argjson depth 1 --argjson branches "$worktree_branches_json" \
-    "$ready_children_filter")
+  pending=$(printf '%s' "$status_json" | ready_children 1)
   walk_queries=0
   while :; do
     entry=$(printf '%s' "$pending" | jq -c '.[0] // empty')
@@ -220,9 +234,7 @@ if [ "$issue_state" = "OPEN" ] && [ "$issue_type" = "compound" ] && [ "$child_lo
       walk_stop="unavailable because GitHub truncated the child list of #$entry_number"
       break
     }
-    children=$(printf '%s' "$cursor_json" | jq -c \
-      --argjson depth "$((entry_depth + 1))" --argjson branches "$worktree_branches_json" \
-      "$ready_children_filter")
+    children=$(printf '%s' "$cursor_json" | ready_children "$((entry_depth + 1))")
     pending=$(jq -nc --argjson children "$children" --argjson pending "$pending" '$children + $pending')
   done
 
@@ -242,12 +254,12 @@ render_skipped() {
   printf '%s' "$skipped_started" | jq -c '.[]' | while IFS= read -r entry; do
     entry_number=$(printf '%s' "$entry" | jq -r '.number')
     printf '%s\n' "- #$entry_number $(printf '%s' "$entry" | jq -r '.title')"
-    rows=$(printf '%s' "$worktree_rows_json" | jq -c --arg issue "$entry_number" '
-      .[] | select(.branch | test("(^|[-_/])" + $issue + "([-_/]|$)"))
+    rows=$(printf '%s' "$worktree_rows_json" | jq -c --argjson entry "$entry" '
+      .[] | select(.branch as $branch | $entry.matches | index($branch))
     ')
     if [ -z "$rows" ]; then
       printf '  Worktree: none (linked branch %s)\n' \
-        "$(printf '%s' "$entry" | jq -r 'if (.linked | length) == 0 then "unknown" else .linked | join(", ") end')"
+        "$(printf '%s' "$entry" | jq -r 'if (.allLinked | length) == 0 then "unknown" else .allLinked | join(", ") end')"
       continue
     fi
     printf '%s\n' "$rows" | while IFS= read -r row; do

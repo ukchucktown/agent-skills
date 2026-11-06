@@ -72,6 +72,13 @@
       ]
     },
     {
+      "number": 69,
+      "title": "Unlinked child",
+      "state": "CLOSED",
+      "parent": 60,
+      "linked": []
+    },
+    {
       "number": 67,
       "title": "Open effort",
       "state": "OPEN",

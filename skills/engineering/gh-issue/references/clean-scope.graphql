@@ -2,6 +2,9 @@ fragment CleanScopeIssue on Issue {
   number
   title
   state
+  subIssues {
+    totalCount
+  }
   linkedBranches(first: 10) {
     totalCount
     nodes {

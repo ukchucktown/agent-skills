@@ -80,10 +80,11 @@ state.
 
 For a compound issue, the status workflow recommends the first open, unblocked
 standalone issue that has no branch evidence. Branch evidence is a linked
-branch or a local worktree on a branch name that contains the issue number. The
-walk follows GitHub hierarchy order and tries the next sibling when a compound
-issue has no candidate. The walk stops at the first candidate or after 25 issue
-queries.
+branch, or a local worktree on a branch that fits the branch template with the
+issue number in the `{number}` position. A branch that only contains the issue
+number is not branch evidence. The walk follows GitHub hierarchy order and
+tries the next sibling when a compound issue has no candidate. The walk stops at
+the first candidate or after 25 issue queries.
 
 The `Skipped as started` block lists the started issues that the walk passed.
 The status workflow cannot tell paused work from active work, so the block
@@ -111,13 +112,15 @@ start issue 75
 The start workflow handles these tasks:
 
 1. Resolve the issue and its ancestor hierarchy.
-2. Reuse an existing issue branch or worktree when one exists.
-3. Use an established repository branch pattern when the evidence is clear.
-4. Create the necessary remote branch and local worktree when work does not
-   exist.
-5. Assign the authenticated user when the issue has no assignee.
-6. Apply the configured start values to assigned GitHub Project boards.
-7. Stop before implementation starts.
+2. Reuse an existing issue branch or worktree when one exists. A linked branch
+   comes first. Without a linked branch, a branch that fits the branch template
+   is the issue branch.
+3. Create the necessary remote branch and local worktree when work does not
+   exist. The configured templates supply the branch name and the worktree
+   path.
+4. Assign the authenticated user when the issue has no assignee.
+5. Apply the configured start values to assigned GitHub Project boards.
+6. Stop before implementation starts.
 
 One checked-in command performs the complete start or resume workflow. The
 agent does not coordinate separate GitHub, Git, or Project
@@ -127,6 +130,22 @@ If required evidence conflicts, the command returns one structured question
 before it changes state. The skill asks that question and reruns the command
 with the selected branch, base, destination, or confirmed worktree
 path. It does not use more searches to guess the answer.
+
+When no branch belongs to the issue but a branch contains the issue number,
+start asks which branch to use. The question lists those branches and the name
+of a new branch. If you name a branch that does not exist, start creates it. Start
+also asks for a branch name when a template uses the effort key and the issue
+title has no key.
+
+Start records the issue of each branch that it creates or attaches in the Git
+configuration of the clone. Start, status, finish, clean, and cancel never give
+a branch to an issue when the record names another issue. Start refuses such a
+branch, also when you name it with `--branch` or the issue links it. Two issues
+with the same effort key thus cannot share one branch in one repository. Cleanup
+deletes the record with the last copy of a branch, so a later issue can use the
+name again. A shared branch name that no link or record ties to the issue needs
+your answer before start uses it. Start also refuses a destination that holds a
+worktree on a different branch.
 
 Start preserves existing assignees and reports their names. Before branch
 creation, start checks whether each ancestor branch lacks commits from its
@@ -160,6 +179,12 @@ commits those changes, pushes the branch, and prepares a ready-for-review pull
 request. The pull request targets the resolved parent or stable branch and ends
 with `Closes #75`.
 
+Finish finds the issue worktree with the same branch rule as start. If only
+worktrees on branches that contain the issue number exist, finish asks which
+branch to use. Finish does not select one of those worktrees without your
+answer. Finish refuses a branch that the record of the clone gives to another
+issue.
+
 Finish accepts uncommitted work and reports it separately from committed paths.
 The report includes staged changes, unstaged changes, and untracked files. The
 agent reviews these files before it commits the intended changes. Unresolved
@@ -183,11 +208,11 @@ Use `clean` with an issue number after GitHub merges the work:
 gh-issue clean 75
 ```
 
-The plan covers the issue and its sub-issues in the same repository. It does
-not include the parent issue. Thus, you can clean a merged task while its epic
-stays open. The plan
-can include eligible issue worktrees and local or remote branches. The skill
-asks for confirmation before it deletes any item.
+The plan covers the issue and its sub-issues in the same repository. It does not
+include the parent issue. Thus, you can clean a merged task while its epic stays
+open. The plan can include eligible issue worktrees and local or remote
+branches. A branch belongs to the plan under the same branch rule as start,
+status, and finish. The skill asks for confirmation before it deletes any item.
 
 The stable branch is the branch that the primary checkout is on. It can be a
 long-lived feature branch instead of the default branch. Cleanup never removes
@@ -197,6 +222,8 @@ The normal cleanup preserves these items:
 
 - A branch whose name or link refers to an open issue, also an issue outside
   the plan
+- A possible branch, which contains the number of an issue in the plan but does
+  not fit the branch template
 - A dirty, locked, or unavailable worktree
 - The active checkout
 - A protected branch
@@ -259,13 +286,36 @@ changes any item.
 
 Cancellation never removes the stable checkout, the default branch, a
 protected branch, an unrelated branch, a locked or unavailable worktree, or a
-branch that multiple worktrees use.
+branch that multiple worktrees use. A branch belongs to the effort under the
+same branch rule as start, status, and finish. Cancellation also keeps a
+possible branch and lists it in the plan as preserved.
 
 ## Configuration
 
 The skill uses one local configuration file with global, organization, and
 repository tiers. More specific settings override broader settings. Explicit
 command options apply only to the current invocation.
+
+A shared workspace can document its branch and worktree rules in a
+`.gh-issue.json` file. The skill finds the file in the folder of the primary
+checkout or in a parent folder. The workspace file can set these layout
+settings:
+
+- The complete worktree path, with variables such as `{workspace}`,
+  `{branch}`, and `{checkout}`
+- The task and integration branch templates
+- The effort key, which the skill extracts from a title prefix such as
+  `[TICKET-42]`
+- The task base branch
+
+A branch template that uses the effort key and omits the issue number gives one
+branch name to related issues in different repositories.
+
+The workspace tier overrides the organization tier. Repository settings in the
+local file override the workspace file. `gh-issue config` shows the workspace
+file as the source of each setting that the file supplies. The skill never
+writes the workspace file. Personal settings, such as the worktree root and the
+board mappings, stay in the local file.
 
 Use `gh-issue config` with a repository and an issue to discover that issue's
 assigned GitHub Project boards. The workflow displays field choices and current
