@@ -282,13 +282,16 @@ open issues could prove that no other issue links a branch. Thus, the skill
 keeps a local record instead. When start creates or attaches a branch, start
 writes the issue number into the Git configuration of the clone, for example
 `branch.feat/ticket-42.gh-issue = 12`. Git deletes the record when it deletes
-the local branch.
+the local branch. Clean, cancel, and repository cleanup also delete the record
+when they remove the last copy of a branch. A record of a branch that no longer
+exists in the clone is obsolete and does not count.
 
 Every command reads the record:
 
 - A linked branch whose record names another issue is a conflict. Start and
-  finish stop and show the conflict. Status does not count the branch as a
-  local worktree of the issue. Clean and cancel keep the branch.
+  finish stop and show the conflict before they select a branch, also for an
+  explicit `--branch`. Status does not count the branch as a local worktree of
+  the issue. Clean and cancel keep the branch.
 - A name match or a possible branch whose record names another issue does not
   belong to the issue.
 - Start and finish refuse an explicit `--branch` value whose record names

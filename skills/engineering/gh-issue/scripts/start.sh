@@ -85,6 +85,8 @@ ask_missing_key() {
 # Start records the issue of each branch it creates or attaches in this clone.
 # A branch recorded for another issue never becomes the branch of this issue.
 refuse_recorded() {
+  # A record of a branch that no longer exists in this clone is obsolete.
+  branch_known "$2" || return 0
   recorded_issue=$(jq -r --arg branch "$2" '.records[$branch] // empty' "$discovery_file")
   if [ -n "$recorded_issue" ] && [ "$recorded_issue" != "$1" ]; then
     echo "start.sh: branch $2 belongs to issue #$recorded_issue in this clone, not issue #$1. Name another branch with --branch." >&2
@@ -358,6 +360,7 @@ discovered "$number" '.matches[]' >"$focused_candidates"
 focused_candidate_count=$(wc -l <"$focused_candidates" | tr -d ' ')
 focused_branch=
 planned_branch=
+refuse_conflicts "$number"
 if [ -n "$selected_branch" ]; then
   if [ "$focused_candidate_count" -gt 0 ] && ! grep -Fx -- "$selected_branch" "$focused_candidates" >/dev/null; then
     needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
@@ -375,7 +378,6 @@ elif [ "$focused_candidate_count" -eq 1 ]; then
 elif [ "$focused_candidate_count" -gt 1 ]; then
   needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
 else
-  refuse_conflicts "$number"
   check_rendered "$number"
   ask_possible "$number"
   ask_missing_key "$number"
@@ -489,6 +491,7 @@ if [ -z "$focused_branch" ]; then
   fi
 
   while IFS= read -r item_number; do
+    refuse_conflicts "$item_number"
     item_candidates=$temporary_directory/candidates-$item_number
     discovered "$item_number" '.matches[]' >"$item_candidates"
     item_candidate_count=$(wc -l <"$item_candidates" | tr -d ' ')
@@ -503,7 +506,6 @@ if [ -z "$focused_branch" ]; then
     elif [ "$item_candidate_count" -gt 1 ]; then
       needs_input base "Which existing branch should provide the base for issue #$number?" "$item_candidates"
     else
-      refuse_conflicts "$item_number"
       check_rendered "$item_number"
       ask_possible "$item_number"
       ask_missing_key "$item_number"

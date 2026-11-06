@@ -772,6 +772,16 @@ while IFS="$(printf '\t')" read -r branch planned_oid; do
   fi
 done <"$remove_remote"
 
+# Git deletes the configuration of a branch, which holds its gh-issue record,
+# only with the local branch. Remove the configuration of a removed remote
+# branch that has no local copy, so an obsolete record cannot block the name.
+while IFS="$(printf '\t')" read -r branch planned_oid; do
+  [ -n "$branch" ] || continue
+  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+    git config --remove-section "branch.$branch" 2>/dev/null || true
+  fi
+done <"$remove_remote"
+
 if [ "$operation" = "cancel" ]; then
   printf 'Cancellation applied: %s issue(s), %s pull request(s), %s worktree(s), %s local branch(es), %s remote branch(es).\n' \
     "$issue_count" "$pr_count" "$worktree_count" "$local_count" "$remote_count"

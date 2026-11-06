@@ -188,6 +188,13 @@ printf '%s' "$discovery" | jq -r '.matches[]' >"$issue_branches"
 current_root=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
 
+# A link and a record that name different issues stop finish before any selection.
+conflict=$(printf '%s' "$discovery" | jq -r '.conflicts[0] // empty | "\(.branch)\t\(.issue)"')
+if [ -n "$conflict" ]; then
+  echo "finish.sh: issue #$number links branch $(printf '%s' "$conflict" | cut -f1), but this clone records it for issue #$(printf '%s' "$conflict" | cut -f2). Resolve the conflict first." >&2
+  exit 2
+fi
+
 selected=
 if [ -n "$selected_branch" ]; then
   # An explicit branch follows the same ownership rule as start.
@@ -219,11 +226,6 @@ if [ -z "$selected" ]; then
   fi
   if [ -s "$issue_branches" ]; then
     echo "finish.sh: issue #$number has branch $(paste -sd ',' "$issue_branches" | sed 's/,/, /g') with no worktree; resume issue #$number to attach it" >&2
-    exit 2
-  fi
-  conflict=$(printf '%s' "$discovery" | jq -r '.conflicts[0] // empty | "\(.branch)\t\(.issue)"')
-  if [ -n "$conflict" ]; then
-    echo "finish.sh: issue #$number links branch $(printf '%s' "$conflict" | cut -f1), but this clone records it for issue #$(printf '%s' "$conflict" | cut -f2). Resolve the conflict first." >&2
     exit 2
   fi
   if [ -s "$possible_file" ]; then

@@ -336,6 +336,33 @@ class Layout(unittest.TestCase):
         result = self.run_script(web, 'finish.sh', '--dry-run', 'example/app-web', '14', code=2)
         self.assertIn('records it for issue #12', result.stderr)
         self.assertNotIn('close', result.stdout)
+        # An explicit branch cannot bypass the conflict in finish or in start.
+        self.git(web, 'worktree', 'add', '-q', '-b', 'topic/other', str(self.root / 'other'), 'main')
+        result = self.run_script(web, 'finish.sh', '--dry-run', '--branch', 'topic/other', 'example/app-web', '14', code=2)
+        self.assertIn('records it for issue #12', result.stderr)
+        self.assertNotIn('close', result.stdout)
+        for branch in ('topic/new', 'topic/other'):
+            result = self.run_script(web, 'start.sh', 'resume', '--branch', branch, 'example/app-web', '14', code=2)
+            self.assertIn('records it for issue #12', result.stderr)
+        self.assertEqual(self.mutations(), before)
+        self.assertEqual(self.record(web, 'topic/other'), '')
+
+    def test_record_of_a_removed_branch_does_not_block_its_name(self):
+        self.write_workspace({'taskBranchTemplate': 'feat/shared'})
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            12: {'title': 'First change', 'linked': ['feat/shared']}, 14: {'title': 'Later change'}})
+        self.git(web, 'push', '-q', 'origin', 'main:refs/heads/feat/shared')
+        self.git(web, 'fetch', '-q', 'origin')
+        # Start records the remote-only branch, which has no local copy.
+        output = self.run_script(web, 'start.sh', 'start', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Status'), 'already_started')
+        self.assertEqual(self.record(web, 'feat/shared'), '12')
+        # The remote branch goes away, as after cleanup or an automatic deletion on merge.
+        self.edit_issue('example/app-web', 12, state='CLOSED', linked=[])
+        self.git(web, 'push', '-q', 'origin', '--delete', 'feat/shared')
+        output = self.run_script(web, 'start.sh', 'start', 'example/app-web', '14').stdout
+        self.assertEqual((self.field(output, 'Status'), self.field(output, 'Branch')), ('started', 'feat/shared'))
+        self.assertEqual(self.record(web, 'feat/shared'), '14')
 
     def test_finish_keeps_a_linked_branch_without_a_worktree(self):
         primary = self.repository('example/plain', self.home / 'code/plain', {5: {'title': 'First task'}})

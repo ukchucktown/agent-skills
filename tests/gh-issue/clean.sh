@@ -61,6 +61,8 @@ create_worktree feat/issue-75-port-62-fixes "$open_other_worktree" main port.txt
 # names open issue #75. The second branch only contains the number 69.
 "$real_git" -C "$primary" branch feat/issue-69-follow-up-75 main
 "$real_git" -C "$primary" branch fix/69-typo main
+# A merged branch of #69 that exists only on the remote, with a branch record.
+"$real_git" -C "$primary" branch feat/issue-69-remote-copy main
 "$real_git" -C "$primary" branch feat/issue-73-foreign-parent main
 
 remote=$(CDPATH= cd -- "$remote" && pwd -P)
@@ -102,7 +104,10 @@ open_other_worktree=$("$real_git" -C "$open_other_worktree" rev-parse --show-top
   feat/issue-75-port-62-fixes \
   feat/issue-69-follow-up-75 \
   fix/69-typo \
+  feat/issue-69-remote-copy \
   feat/issue-404-not-an-issue
+"$real_git" -C "$primary" branch -D feat/issue-69-remote-copy >/dev/null
+"$real_git" -C "$primary" config branch.feat/issue-69-remote-copy.gh-issue 69
 
 printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
 "$real_git" -C "$primary" worktree lock "$active_worktree" --reason reserved
@@ -270,7 +275,12 @@ printf '%s\n' "$apply_output" | grep -F \
 printf '%s\n' "$apply_output" | grep -F \
   'Worktrees to remove: 2' >/dev/null
 printf '%s\n' "$apply_output" | grep -F \
-  'Cleanup applied: 2 worktree(s), 2 local branch(es), 2 remote branch(es).' >/dev/null
+  'Cleanup applied: 2 worktree(s), 2 local branch(es), 3 remote branch(es).' >/dev/null
+# Cleanup removes the record of a removed branch that had no local copy.
+if "$real_git" -C "$primary" config --get branch.feat/issue-69-remote-copy.gh-issue >/dev/null; then
+  echo 'cleanup left the record of a removed remote-only branch' >&2
+  exit 1
+fi
 if printf '%s\n' "$apply_output" | grep -F "$root_worktree" >/dev/null; then
   echo 'cleanup confirmation repeated worktree paths' >&2
   exit 1
