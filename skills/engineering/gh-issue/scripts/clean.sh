@@ -300,10 +300,10 @@ if [ "$operation" = "cancel" ]; then
         exit 2
       }
       if [ "$root_recorded" = "false" ]; then
-        printf '%s' "$page" | jq -c '.data.repository.issue | del(.subIssues)' >>"$tree_lines"
+        printf '%s' "$page" | jq -c '.data.repository.issue | . + {compound: (.subIssues.totalCount > 0)} | del(.subIssues)' >>"$tree_lines"
         root_recorded=true
       fi
-      printf '%s' "$page" | jq -c '.data.repository.issue.subIssues.nodes[] | del(.subIssues)' >>"$tree_lines"
+      printf '%s' "$page" | jq -c '.data.repository.issue.subIssues.nodes[] | . + {compound: (.subIssues.totalCount > 0)} | del(.subIssues)' >>"$tree_lines"
       printf '%s' "$page" | jq -r '
         .data.repository.issue.subIssues.nodes[] | select(.subIssues.totalCount > 0) | .number
       ' >>"$pending"
@@ -328,23 +328,11 @@ if [ "$operation" = "cancel" ]; then
     exit 2
   }
 
-  issue_numbers=$temporary_directory/issue-numbers
-  jq -r '.[].number' "$issues_file" >"$issue_numbers"
-  numbers_pattern=$(paste -sd '|' "$issue_numbers")
-
-  linked_branches=$temporary_directory/linked-branches
-  jq -r --arg repository "$canonical_repository" '
-    .[] | .linkedBranches.nodes[] |
-    select(.ref.repository.nameWithOwner == $repository) |
-    .ref.name
-  ' "$issues_file" | sort -u >"$linked_branches"
-
-  while IFS= read -r branch; do
-    if grep -Fqx "$branch" "$linked_branches" ||
-       printf '%s\n' "$branch" | grep -Eq "(^|[-_/])(${numbers_pattern})([-_/]|$)"; then
-      printf '%s\n' "$branch" >>"$candidate_branches"
-    fi
-  done <"$all_branches"
+  jq -c --arg repository "$canonical_repository" '
+    map(. + {linked: [.linkedBranches.nodes[] |
+      select(.ref.repository.nameWithOwner == $repository) | .ref.name]})
+  ' "$issues_file" >"$issues_file.next"
+  mv "$issues_file.next" "$issues_file"
 else
   # Clean starts from the branches. Each issue number in a branch name is a
   # possible owner. GitHub returns the state and the parent chain of only
@@ -401,6 +389,7 @@ else
         number,
         title,
         state,
+        compound: (.subIssues.totalCount > 0),
         scope: (if $in_scope then "in" elif ($chain | length) >= 9 then "unknown" else "out" end),
         linked: [.linkedBranches.nodes[] | select(.ref.repository.nameWithOwner == $repository) | .ref.name],
         linkedTruncated: (.linkedBranches.totalCount > (.linkedBranches.nodes | length))
@@ -418,11 +407,10 @@ else
     exit 2
   }
 
-  # One row for each branch and each issue that can own it: the branch, the
-  # issue number, the scope, and the issue state. Only rows in scope or of
-  # unknown scope make a branch a candidate. Rows out of scope keep the open
-  # state of other issues, so a branch of an open issue is never removed.
-  # A link from an issue that is not in scope counts as out of scope.
+  # One row for each branch and each issue that its name or a link refers
+  # to: the branch, the issue number, the scope, and the issue state. These
+  # rows protect a branch of an open issue. A link from an issue that is not
+  # in scope counts as out of scope.
   scope_table=$temporary_directory/scope-table
   jq -r '.[] | [(.number | tostring), .scope, .state] | @tsv' \
     "$issues_file" >"$scope_table"
@@ -434,8 +422,40 @@ else
       .linked[] | [., $number, $scope, $state] | @tsv' "$issues_file" |
       awk -F '\t' 'NR == FNR { keep[$0] = 1; next } ($1 in keep)' "$all_branches" -
   } | sort -u >"$branch_issues"
-  awk -F '\t' '$3 != "out" { print $1 }' "$branch_issues" | sort -u >"$candidate_branches"
 fi
+
+# The shared rule decides which branches belong to each issue. Start, status,
+# and finish use the same rule. A branch that only contains an issue number is
+# a possible branch, which the plan preserves.
+discovery_file=$temporary_directory/discovery.json
+if ! jq -c --rawfile names "$all_branches" '
+  {names: ($names | split("\n") | map(select(length > 0))),
+   issues: [.[] | {number, title, compound, linked}]}' "$issues_file" |
+  "$script_directory/branch-discovery.sh" "$canonical_repository" --checkout="$primary_checkout" >"$discovery_file"; then
+  echo "$command_name: $(jq -r '.message // "branch discovery failed"' "$discovery_file" 2>/dev/null || true)" >&2
+  exit 2
+fi
+
+# One row for each branch and each issue that owns it under the shared rule:
+# the branch, the issue number, the scope, and the issue state. Rows in scope
+# or of unknown scope make a branch a candidate.
+member_issues=$temporary_directory/member-issues
+jq -r --slurpfile discovery "$discovery_file" '
+  .[] | . as $issue |
+  ($discovery[0].issues[] | select(.number == $issue.number)) as $found |
+  $found.matches[] | [., ($issue.number | tostring), ($issue.scope // "in"), $issue.state] | @tsv
+' "$issues_file" | awk -F '\t' 'FILENAME == ARGV[1] { keep[$0] = 1; next } ($1 in keep)' "$all_branches" - |
+  sort -u >"$member_issues"
+awk -F '\t' '$3 != "out" { print $1 }' "$member_issues" | sort -u >"$candidate_branches"
+
+possible_branches=$temporary_directory/possible-branches
+jq -r --slurpfile discovery "$discovery_file" '
+  .[] | select((.scope // "in") != "out") | . as $issue |
+  ($discovery[0].issues[] | select(.number == $issue.number)) as $found |
+  $found.possible[] | [., "name contains #\($issue.number) but does not fit \($found.template)"] | @tsv
+' "$issues_file" | awk -F '\t' 'FILENAME == ARGV[1] { keep[$0] = 1; next } ($1 in keep)' "$all_branches" - |
+  awk -F '\t' 'FILENAME == ARGV[1] { member[$0] = 1; next } !($1 in member) && !seen[$1]++' "$candidate_branches" - \
+  >"$possible_branches"
 
 remove_worktrees=$temporary_directory/remove-worktrees
 remove_local=$temporary_directory/remove-local
@@ -451,6 +471,7 @@ close_prs=$temporary_directory/close-prs
 : >"$warnings"
 : >"$close_issues"
 : >"$close_prs"
+cat "$possible_branches" >>"$preserved"
 
 if [ "$operation" = "cancel" ]; then
   jq -r 'reverse[] | select(.state == "OPEN") | [(.number | tostring), .title] | @tsv' \
@@ -530,7 +551,7 @@ while IFS= read -r branch; do
       $1 == branch && $3 == "in" { in_scope = 1 }
       $1 == branch && $3 == "unknown" && unknown == "" { unknown = $2 }
       END { if (!in_scope) print unknown }
-    ' "$branch_issues")
+    ' "$member_issues")
     if [ -n "$open_issue" ]; then
       reason="issue #$open_issue is open"
     elif [ -n "$unknown_issue" ]; then

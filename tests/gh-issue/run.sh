@@ -147,5 +147,6 @@ printf '%s\n' "$explicit_finish" | grep -Fx 'Base: main' >/dev/null
 "$repository_root/tests/gh-issue/status-recommendation.sh"
 
 python3 "$repository_root/tests/gh-issue/projects.py"
+python3 "$repository_root/tests/gh-issue/layout.py"
 
 printf 'gh-issue deterministic command tests passed\n'

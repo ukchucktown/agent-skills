@@ -61,10 +61,13 @@ specified issue with `config.sh`. Resolve only the choices in that result.
 Ask which fields and lifecycle values to manage, or whether a board should stay
 unmanaged. Ask for the save scope when the user did not specify it.
 
-One local file contains global, organization, and repository tiers. Narrower
-tiers override broader settings. Only assigned boards participate. Compare
-names without case sensitivity, then use the returned GitHub IDs. A configured
-board that is not assigned to the issue remains untouched.
+One local file contains global, organization, and repository tiers. A
+`.gh-issue.json` workspace file in a folder above the primary checkout adds a
+tier between the organization and repository tiers. That tier holds layout
+settings only. Config reports the workspace file as a source and never writes
+it. Narrower tiers override broader settings. Only assigned boards participate.
+Compare names without case sensitivity, then use the returned GitHub IDs. A
+configured board that is not assigned to the issue remains untouched.
 
 Prepare the `--set` preview at the selected scope. Present the proposed changes
 before the write. After the user accepts the preview, repeat the command with
@@ -101,11 +104,14 @@ open pull requests that will close with no merge, issue worktrees and branches
 that the command will remove, warnings, and preserved artifacts. Planning is
 read-only and creates no saved plan file.
 
-Cancellation is allowed to discard unmerged commits, divergent local and
-remote tips and uncommitted changes. It never
-removes the stable checkout, the default branch, a protected branch, an
-unrelated branch, a locked or unavailable worktree, or a branch that multiple
-worktrees use. Relay the command's plan. Do not reconstruct it.
+Cancellation is allowed to discard unmerged commits, divergent local and remote
+tips and uncommitted changes. A branch belongs to the effort under the branch
+rule that start, status, and finish use. It never removes the stable checkout,
+the default branch, a protected branch, an unrelated branch, a possible branch,
+a locked or unavailable worktree, or a branch that multiple worktrees use. A
+possible branch contains the number of an issue in the effort but does not fit
+the branch template. The plan lists it as preserved. Relay the command's plan.
+Do not reconstruct it.
 
 Request one confirmation immediately before you apply the plan. After
 confirmation, pass the exact displayed token:
@@ -278,6 +284,12 @@ same command once with the matching option:
 --accept-in-use PATH
 ```
 
+A `branch` question can list possible branches and one new branch name. A
+possible branch contains the issue number but does not fit the branch template.
+When `--branch` names a branch that does not exist, start creates that branch.
+A `branch` or `destination` question with no candidates asks the user for a
+name, because the issue title has no effort key.
+
 The `accept-in-use` question comes before `start` or `resume` attaches an
 existing worktree with uncommitted changes. Another session can work in it.
 If the user confirms, rerun the command with the shown path.
@@ -310,7 +322,9 @@ after confirmed completion, including issues that are already complete. A PR
 that is ready for review does not trigger Done. For a project setup result, use
 the config workflow above. Relay other completed or blocked results and stop.
 If the command cannot resolve a parent base, ask one question and rerun it with
-the reported `--base BRANCH` option.
+the reported `--base BRANCH` option. A `needs_input` result for `branch` lists
+the worktree branches that finish can use. Ask its exact question, then rerun
+finish once with `--branch BRANCH`.
 
 When the command reports changed paths, use its worktree, branch, base, and
 pull-request values for the rest of finish. Do not repeat its inspection.
@@ -347,21 +361,20 @@ branch:
 ```
 
 Pass `.` instead of `OWNER/REPOSITORY` when the current checkout is the target.
-Pass `--local-only` before the repository when the user wants to preserve
-remote branches. The plan covers the issue and its sub-issues at all levels in
-the same repository. It does not include the parent issue, so the parent can
-stay open. A branch
-belongs to the plan when its name contains the number of one of these issues,
-or when one of these issues links the branch. The command reads only the issues
-that branch names refer to. It does not read the full issue tree. Planning is
+Pass `--local-only` before the repository when the user wants to preserve remote
+branches. The plan covers the issue and its sub-issues at all levels in the same
+repository. It does not include the parent issue, so the parent can stay open. A
+branch belongs to the plan when the branch rule that start, status, and finish
+use assigns it to one of these issues. The command reads only the issues that
+branch names refer to. It does not read the full issue tree. Planning is
 read-only and creates no saved plan file.
 
 Relay the command's plan. Do not reconstruct it. The command preserves a branch
 when its name or a link refers to an open issue, also an issue outside the plan.
-It also preserves dirty, locked, or unavailable worktrees, the active checkout,
-protected branches, branches with open pull requests, divergent local and remote tips,
-and work that cannot be verified in the stable branch. Stop when nothing is
-eligible.
+It also preserves possible branches, dirty, locked, or unavailable worktrees,
+the active checkout, protected branches, branches with open pull requests,
+divergent local and remote tips, and work that cannot be verified in the stable
+branch. Stop when nothing is eligible.
 
 Request confirmation immediately before deletion. After confirmation, apply
 only the displayed plan with its exact token:
@@ -392,15 +405,17 @@ ordinary status.
 <important if="the workflow recommends another issue">
 
 Never recommend a standalone issue that already has branch evidence. Branch
-evidence is a linked branch or a local worktree on a branch name that contains
-the issue number. Another session or contributor can own that work. Project
-status without branch evidence can represent another contributor's work, so
-exclude that issue from recommendations. Recommend the first open, unblocked
-standalone issue with no branch evidence in GitHub hierarchy order. Descend
-through compound issues as needed. When a compound issue has no candidate,
-continue with its next sibling. Report the started issues that the walk skipped,
-with their worktree evidence. Do not classify a skipped issue as paused or
-active. Git evidence does not establish whether another session uses a worktree.
-Explain the evidence and wait for the user to choose or override it.
+evidence is a linked branch, or a local worktree on a branch that fits the
+branch template with the issue number in the `{number}` position. A branch that
+only contains the issue number is not evidence. Another session or contributor
+can own that work. Project status without branch evidence can represent another
+contributor's work, so exclude that issue from recommendations. Recommend the
+first open, unblocked standalone issue with no branch evidence in GitHub
+hierarchy order. Descend through compound issues as needed. When a compound
+issue has no candidate, continue with its next sibling. Report the started
+issues that the walk skipped, with their worktree evidence. Do not classify a
+skipped issue as paused or active. Git evidence does not establish whether
+another session uses a worktree. Explain the evidence and wait for the user to
+choose or override it.
 
 </important>

@@ -88,7 +88,8 @@ output=$(jq \
   elif $mode == "scope" then
     {data: {repository: (reduce $numbers[] as $n ({};
       .["i\($n)"] = (issue_record($n) | if . == null then null
-        else {number, title, state, linkedBranches: linked, parent: number_chain} end)))}} |
+        else {number, title, state, subIssues: {totalCount: (children(.number) | length)},
+          linkedBranches: linked, parent: number_chain} end)))}} |
     ([$numbers[] | select(issue_record(.) == null) |
       {type: "NOT_FOUND", path: ["repository", "i\(.)"],
        message: "Could not resolve to an issue with the number of \(.)."}]) as $errors |

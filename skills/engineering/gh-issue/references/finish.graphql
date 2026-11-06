@@ -6,6 +6,9 @@ query($owner: String!, $name: String!, $number: Int!) {
     }
     issue(number: $number) {
       ...IssueSummary
+      linkedBranches(first: 10) {
+        ...IssueBranches
+      }
       subIssues(first: 100) {
         totalCount
         nodes {
@@ -14,6 +17,9 @@ query($owner: String!, $name: String!, $number: Int!) {
       }
       parent {
         ...IssueSummary
+        linkedBranches(first: 10) {
+          ...IssueBranches
+        }
         parent {
           ...IssueSummary
           parent {
@@ -49,6 +55,18 @@ fragment IssueSummary on Issue {
   labels(first: 20) {
     nodes {
       name
+    }
+  }
+}
+
+fragment IssueBranches on LinkedBranchConnection {
+  totalCount
+  nodes {
+    ref {
+      name
+      repository {
+        nameWithOwner
+      }
     }
   }
 }

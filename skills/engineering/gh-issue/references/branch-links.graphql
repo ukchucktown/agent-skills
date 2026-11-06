@@ -1,0 +1,25 @@
+query($search: String!) {
+  search(query: $search, type: ISSUE, first: 20) {
+    issueCount
+    nodes {
+      ... on Issue {
+        number
+        state
+        repository {
+          nameWithOwner
+        }
+        linkedBranches(first: 10) {
+          totalCount
+          nodes {
+            ref {
+              name
+              repository {
+                nameWithOwner
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,12 +6,23 @@ const { homedir } = require('node:os');
 const { parseArgs } = require('node:util');
 const HERE = __dirname;
 const DEFAULTS = {
-  worktreeRoot: null, taskBaseBranch: null,
+  worktreeRoot: null, worktreePath: null, taskBaseBranch: null, branchKey: null,
   integrationBranchTemplate: 'integration/issue-{number}-{slug}',
   taskBranchTemplate: 'feat/issue-{number}-{slug}',
   worktreeTemplate: 'issue-{number}-{slug}',
   projectSync: { enabled: true, ancestors: true, boards: {} },
 };
+// A workspace file documents layout rules for every member of a shared workspace.
+const WORKSPACE_FILE = '.gh-issue.json';
+const WORKSPACE_SETTINGS = ['worktreePath', 'taskBranchTemplate', 'integrationBranchTemplate', 'branchKey', 'taskBaseBranch'];
+const BRANCH_VARIABLES = ['number', 'slug', 'key'];
+const TEMPLATE_VARIABLES = {
+  taskBranchTemplate: BRANCH_VARIABLES,
+  integrationBranchTemplate: BRANCH_VARIABLES,
+  worktreeTemplate: BRANCH_VARIABLES,
+  worktreePath: ['root', 'workspace', 'owner', 'repo', 'checkout', 'branch', 'number', 'slug', 'key'],
+};
+const PLACEHOLDER = /\{([a-z]+)\}/g;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (value, key) => Object.hasOwn(value, key);
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
@@ -49,14 +60,19 @@ function jsonObject(text) {
   return value;
 }
 
-function repositoryName(value) {
+// Keep the GitHub spelling for rendered paths. Configuration keys use the folded form.
+function repositoryDisplayName(value) {
   if (value === '.') {
     value = run('git', 'config', '--get', 'remote.origin.url').trim()
       .replace(/^(git@github.com:|https:\/\/github.com\/|ssh:\/\/git@github.com\/)/i, '')
       .replace(/\.git$/i, '');
   }
   if (!/^[\w.-]+\/[\w.-]+$/.test(value)) throw new Problem('Expected OWNER/REPOSITORY');
-  return fold(value);
+  return value;
+}
+
+function repositoryName(value) {
+  return fold(repositoryDisplayName(value));
 }
 
 function keyed(value, kind) {
@@ -114,10 +130,18 @@ function overlay(base, update, sources = null, source = '', prefix = '') {
   for (const [key, value] of Object.entries(update)) {
     const location = (prefix ? prefix + '.' : '') + key;
     if (object(value)) {
+      // A replaced scalar default, such as a null branchKey, no longer has its own source.
+      if (sources) delete sources[location];
       result[key] = overlay(result[key], value, sources, source, location);
     } else {
       result[key] = value;
-      if (sources) sources[location] = source;
+      if (sources) {
+        // A scalar that replaces an object also replaces the sources of its fields.
+        for (const field of Object.keys(sources)) {
+          if (field.startsWith(location + '.')) delete sources[field];
+        }
+        sources[location] = source;
+      }
     }
   }
   return result;
@@ -189,7 +213,7 @@ function migrate(raw) {
   return layer(value);
 }
 
-function resolver(raw, override) {
+function resolver(raw, override, workspace = null) {
   // Normalize once per invocation, even when several ancestors share a repository.
   const normalized = migrate(raw);
   const invocation = layer(override);
@@ -204,6 +228,7 @@ function resolver(raw, override) {
     const tiers = [
       ['global', global],
       ['organization:' + owner, own(normalized.organizations, owner) ? normalized.organizations[owner] : {}],
+      ...(workspace ? [['workspace:' + workspace.file, workspace.settings]] : []),
       ['repository:' + repository, own(normalized.repositories, repository) ? normalized.repositories[repository] : {}],
       ['invocation', invocation],
     ];
@@ -214,23 +239,119 @@ function resolver(raw, override) {
         sources['projectSync.boards.' + identity + '.enabled'] = 'default';
       }
     }
-    if (effective.worktreeRoot !== null &&
-        (typeof effective.worktreeRoot !== 'string' || !path.isAbsolute(effective.worktreeRoot))) {
-      throw new Problem('worktreeRoot must be an absolute path');
-    }
-    if (effective.taskBaseBranch !== null && !nonempty(effective.taskBaseBranch)) {
-      throw new Problem('taskBaseBranch must be a nonempty branch name');
-    }
-    for (const name of ['integrationBranchTemplate', 'taskBranchTemplate', 'worktreeTemplate']) {
-      const template = effective[name];
-      if (typeof template !== 'string' || !template.includes('{number}') || !template.includes('{slug}')) {
-        throw new Problem('Branch and worktree templates require {number} and {slug}');
-      }
-    }
+    validateLayout(effective, sources);
     const result = { status: 'resolved', repository, effective, sources };
     cache.set(repository, result);
     return result;
   };
+}
+
+function placeholders(template) {
+  return [...template.matchAll(PLACEHOLDER)].map(match => match[1]);
+}
+
+function validateLayout(effective, sources) {
+  if (effective.worktreeRoot !== null &&
+      (typeof effective.worktreeRoot !== 'string' || !path.isAbsolute(effective.worktreeRoot))) {
+    throw new Problem('worktreeRoot must be an absolute path');
+  }
+  if (effective.taskBaseBranch !== null && !nonempty(effective.taskBaseBranch)) {
+    throw new Problem('taskBaseBranch must be a nonempty branch name');
+  }
+  if (effective.branchKey !== null) keyExpression(effective.branchKey);
+  for (const [name, allowed] of Object.entries(TEMPLATE_VARIABLES)) {
+    const template = effective[name];
+    if (name === 'worktreePath' && template === null) continue;
+    if (!nonempty(template)) throw new Problem(name + ' must be a nonempty string');
+    for (const variable of placeholders(template)) {
+      // Only the workspace file knows its own folder.
+      if (variable === 'workspace' && allowed.includes(variable) &&
+          !String(sources[name]).startsWith('workspace:')) {
+        throw new Problem(name + ' uses {workspace}, but ' + WORKSPACE_FILE + ' did not supply ' + name);
+      }
+      if (!allowed.includes(variable)) {
+        throw new Problem(name + ' cannot use {' + variable + '}; allowed variables: ' +
+          allowed.map(item => '{' + item + '}').join(', '));
+      }
+      if (variable === 'key' && effective.branchKey === null) {
+        throw new Problem(name + ' uses {key}, which requires branchKey');
+      }
+    }
+  }
+}
+
+function keyExpression(branchKey) {
+  if (!object(branchKey) || unknown(branchKey, ['from', 'pattern'])) {
+    throw new Problem('branchKey must be an object with from and pattern');
+  }
+  if (branchKey.from !== 'titlePrefix') throw new Problem('branchKey.from must be titlePrefix');
+  if (!nonempty(branchKey.pattern)) throw new Problem('branchKey.pattern must be a nonempty regular expression');
+  let expression;
+  try {
+    expression = new RegExp(branchKey.pattern);
+  } catch (error) {
+    throw new Problem('branchKey.pattern is not a valid regular expression: ' + error.message);
+  }
+  // An empty alternative always matches, so the result length counts the capture groups.
+  if (new RegExp(branchKey.pattern + '|').exec('').length !== 2) {
+    throw new Problem('branchKey.pattern must contain exactly one capture group');
+  }
+  return expression;
+}
+
+function findWorkspace(checkout) {
+  if (!checkout) return null;
+  const real = location => {
+    try {
+      return fs.realpathSync(location);
+    } catch {
+      return null;
+    }
+  };
+  const home = real(homedir());
+  // Search the primary checkout folder and each parent, through the home directory.
+  for (let folder = path.resolve(checkout); ; folder = path.dirname(folder)) {
+    const file = path.join(folder, WORKSPACE_FILE);
+    let text = null;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw new Problem('Cannot read ' + file + ': ' + error.message);
+    }
+    if (text !== null) return { file, folder, settings: workspaceSettings(text, file) };
+    if (path.dirname(folder) === folder || (home !== null && real(folder) === home)) return null;
+  }
+}
+
+function workspaceSettings(text, file) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw new Problem(file + ' is not valid JSON: ' + error.message);
+  }
+  if (!object(value)) throw new Problem(file + ' must contain a JSON object');
+  for (const key of Object.keys(value)) {
+    if (WORKSPACE_SETTINGS.includes(key)) continue;
+    if (key === 'worktreeRoot') {
+      throw new Problem(file + ' cannot contain worktreeRoot, which is specific to one machine; set it in ' + configPath());
+    }
+    if (['projectSync', 'projectStatus'].includes(key)) {
+      throw new Problem(file + ' cannot contain board mappings (' + key + '); set them with the config workflow');
+    }
+    throw new Problem(file + ' cannot contain ' + key + '; it accepts only ' + WORKSPACE_SETTINGS.join(', '));
+  }
+  return value;
+}
+
+// Use the primary checkout of the current directory when it belongs to the repository.
+function currentCheckout(repository) {
+  try {
+    if (repositoryName('.') !== repository) return null;
+    return /^worktree (.+)$/m.exec(run('git', 'worktree', 'list', '--porcelain'))?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function configPath() {
@@ -398,7 +519,7 @@ function saveConfig(filename, rawBytes, proposal) {
   }
 }
 
-function configCommand(args, rawBytes, raw, repository, override) {
+function configCommand(args, rawBytes, raw, repository, override, workspace) {
   const filename = configPath();
   let proposal = migrate(raw);
   const patch = own(args, 'set') ? layer(jsonObject(args.set)) : null;
@@ -420,7 +541,9 @@ function configCommand(args, rawBytes, raw, repository, override) {
       });
     }
   }
-  const resolved = resolver(proposal, override)(repository);
+  const resolved = resolver(proposal, override, workspace)(repository);
+  // The workspace file is a read-only source. Config never writes it.
+  resolved.workspace = workspace ? { file: workspace.file, folder: workspace.folder } : null;
   let boards = [], unresolved = [];
   if (args.issue) {
     const issue = readIssue(repository, args.issue);
@@ -460,6 +583,113 @@ function configCommand(args, rawBytes, raw, repository, override) {
   }
   saveConfig(filename, rawBytes, proposal);
   emit({ ...result, status: 'saved', scope: args.scope, path: filename });
+  return 0;
+}
+
+// Match the historical shell slug: ASCII lowercase, other runs become one hyphen.
+function slugify(title) {
+  const slug = title.replace(/[A-Z]/g, character => character.toLowerCase())
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-/, '').replace(/-$/, '')
+    .slice(0, 48).replace(/-$/, '');
+  return slug || 'work';
+}
+
+function issueKey(effective, title) {
+  if (effective.branchKey === null) return { key: null, text: null };
+  const text = keyExpression(effective.branchKey).exec(title)?.[1];
+  return text ? { key: text.toLowerCase(), text } : { key: null, text: null };
+}
+
+// Substitute in one pass so that a value never introduces another variable.
+function render(template, values) {
+  return template.replace(PLACEHOLDER, (whole, name) => own(values, name) ? String(values[name]) : whole);
+}
+
+function templatePattern(template, number) {
+  const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let source = '', last = 0;
+  for (const match of template.matchAll(PLACEHOLDER)) {
+    source += escape(template.slice(last, match.index)) + (match[1] === 'number' ? String(number) : '.+');
+    last = match.index + match[0].length;
+  }
+  return new RegExp('^' + source + escape(template.slice(last)) + '$');
+}
+
+const sortedUnique = values => [...new Set(values)].sort();
+
+// Decide which branch names belong to one issue. Start, status, and finish share this rule.
+function discover(effective, issue, names) {
+  const template = issue.compound ? effective.integrationBranchTemplate : effective.taskBranchTemplate;
+  const variables = placeholders(template);
+  const { key, text } = issueKey(effective, issue.title);
+  const slug = slugify(issue.title);
+  const missingKey = variables.includes('key') && key === null;
+  const rendered = missingKey ? null : render(template, { number: issue.number, slug, key });
+  const result = { number: issue.number, template, key, rendered, missingKey };
+  const linked = sortedUnique(issue.linked);
+  if (linked.length) return { ...result, source: 'linked', matches: linked, possible: [], linkSearch: null };
+  const pattern = variables.includes('number') ? templatePattern(template, issue.number) : null;
+  const matches = sortedUnique(names.filter(name => pattern ? pattern.test(name) : name === rendered));
+  // The historical number rule now identifies only possible branches for a question.
+  const numberRule = new RegExp('(^|[-_/])' + issue.number + '([-_/]|$)');
+  const possible = sortedUnique(names.filter(name => numberRule.test(name) && !matches.includes(name)));
+  // A rendered name without {number} can be shared, so start must read who links it.
+  const linkSearch = matches.length && !pattern ? (variables.includes('key') ? text : slug.replace(/-/g, ' ')) : null;
+  return { ...result, source: matches.length ? 'template' : 'none', matches, possible, linkSearch };
+}
+
+function branchesCommand(effective, workspace) {
+  let input;
+  try {
+    input = JSON.parse(fs.readFileSync(0, 'utf8'));
+  } catch (error) {
+    throw new Problem('Branch discovery expects JSON input: ' + error.message);
+  }
+  const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
+  if (!object(input) || !strings(input.names) || !Array.isArray(input.issues)) {
+    throw new Problem('Branch discovery expects names and issues');
+  }
+  const issues = input.issues.map(issue => {
+    if (!object(issue) || !Number.isSafeInteger(issue.number) || typeof issue.title !== 'string' ||
+        typeof issue.compound !== 'boolean' || !strings(issue.linked)) {
+      throw new Problem('Each issue needs number, title, compound, and linked');
+    }
+    return discover(effective, issue, input.names);
+  });
+  emit({ status: 'resolved', workspace: workspace?.file ?? null, issues });
+  return 0;
+}
+
+function pathCommand(args, displayName, effective, sources, workspace) {
+  for (const name of ['checkout', 'number', 'title', 'branch']) {
+    if (!own(args, name)) throw new Problem('Worktree path rendering requires --' + name);
+  }
+  const number = positiveInteger(args.number);
+  const checkout = path.resolve(args.checkout);
+  const [owner, repo] = displayName.split('/');
+  const { key } = issueKey(effective, args.title);
+  const values = {
+    root: effective.worktreeRoot ?? path.join(path.dirname(path.dirname(checkout)), 'worktrees'),
+    workspace: workspace?.folder, owner, repo, checkout: path.basename(checkout), branch: args.branch,
+    number, slug: slugify(args.title), key,
+  };
+  const [setting, template] = effective.worktreePath !== null
+    ? ['worktreePath', effective.worktreePath]
+    : ['worktreeTemplate', '{root}/{repo}/' + effective.worktreeTemplate];
+  const variables = placeholders(template);
+  if (variables.includes('key') && key === null) {
+    throw new Problem('The title of issue #' + number + ' does not match branchKey.pattern, so ' +
+      setting + ' cannot render {key}. Which destination should issue #' + number + ' use?', 'needs_input');
+  }
+  for (const name of variables) {
+    // Only the configured folders can climb the tree. Issue data cannot.
+    if (!['root', 'workspace'].includes(name) && String(values[name]).split('/').some(part => ['', '.', '..'].includes(part))) {
+      throw new Problem(setting + ' renders {' + name + '} as an unsafe path part: ' + values[name]);
+    }
+  }
+  const rendered = render(template, values).replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
+  if (!path.isAbsolute(rendered)) throw new Problem(setting + ' renders a path that is not absolute: ' + rendered);
+  emit({ status: 'resolved', path: rendered, setting, source: sources[setting] });
   return 0;
 }
 
@@ -540,15 +770,19 @@ function positiveInteger(value) {
 
 function main() {
   const command = process.argv[2];
-  if (!['config', 'resolve', 'transition'].includes(command)) {
-    throw new Problem('Expected config, resolve, or transition command');
+  if (!['config', 'resolve', 'transition', 'branches', 'path'].includes(command)) {
+    throw new Problem('Expected config, resolve, transition, branches, or path command');
   }
   const options = {
     override: { type: 'string', default: process.env.AGENT_SKILLS_PROJECT_OVERRIDE ?? '{}' },
     ...(command === 'transition' ? {
       'dry-run': { type: 'boolean' }, preflight: { type: 'boolean' },
+    } : command === 'branches' ? {
+      checkout: { type: 'string' },
+    } : command === 'path' ? {
+      checkout: { type: 'string' }, number: { type: 'string' }, title: { type: 'string' }, branch: { type: 'string' },
     } : {
-      'start-settings': { type: 'boolean' }, issue: { type: 'string' },
+      'start-settings': { type: 'boolean' }, issue: { type: 'string' }, checkout: { type: 'string' },
       scope: { type: 'string', default: 'repository' }, set: { type: 'string' }, confirm: { type: 'string' },
     }),
   };
@@ -556,7 +790,8 @@ function main() {
   if (positionals.length !== (command === 'transition' ? 3 : 1)) {
     throw new Problem(command === 'transition' ? 'Expected EVENT OWNER/REPOSITORY ISSUE_NUMBER' : 'Expected OWNER/REPOSITORY');
   }
-  const repository = repositoryName(positionals[command === 'transition' ? 1 : 0]);
+  const displayName = repositoryDisplayName(positionals[command === 'transition' ? 1 : 0]);
+  const repository = fold(displayName);
   const override = jsonObject(args.override);
   const [rawBytes, raw] = loadConfig(configPath());
   if (command === 'transition') {
@@ -565,10 +800,17 @@ function main() {
     args.number = positiveInteger(args.number);
     return transitionCommand(args, repository, raw, override);
   }
+  // Layout settings can come from a workspace file above the primary checkout.
+  const workspace = findWorkspace(args.checkout ?? (command === 'config' ? currentCheckout(repository) : null));
+  if (command === 'branches' || command === 'path') {
+    const { effective, sources } = resolver(raw, override, workspace)(repository);
+    if (command === 'branches') return branchesCommand(effective, workspace);
+    return pathCommand(args, displayName, effective, sources, workspace);
+  }
   if (own(args, 'issue')) args.issue = positiveInteger(args.issue);
   if (!['global', 'organization', 'repository'].includes(args.scope)) throw new Problem('Unknown configuration scope');
-  if (command === 'config') return configCommand(args, rawBytes, raw, repository, override);
-  const result = resolver(raw, override)(repository);
+  if (command === 'config') return configCommand(args, rawBytes, raw, repository, override, workspace);
+  const result = resolver(raw, override, workspace)(repository);
   emit(args['start-settings'] ? result.effective : result);
   return 0;
 }

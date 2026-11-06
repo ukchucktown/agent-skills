@@ -2,12 +2,20 @@
 set -eu
 
 usage() {
-  echo "usage: finish.sh [--dry-run] [--base BRANCH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
+  echo "usage: finish.sh [--dry-run] [--base BRANCH] [--branch BRANCH] [--project-override JSON] OWNER/REPOSITORY|. ISSUE_NUMBER" >&2
   exit 64
+}
+
+needs_input() {
+  jq -cn --arg field "$1" --arg question "$2" --rawfile candidates "$3" \
+    '{status:"needs_input", field:$field, question:$question,
+      candidates:($candidates | split("\n") | map(select(length > 0)))}'
+  exit 2
 }
 
 dry_run=false
 base_override=
+selected_branch=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run)
@@ -23,6 +31,11 @@ while [ "$#" -gt 0 ]; do
     --base)
       [ "$#" -ge 2 ] || usage
       base_override=$2
+      shift 2
+      ;;
+    --branch)
+      [ "$#" -ge 2 ] || usage
+      selected_branch=$2
       shift 2
       ;;
     *) break ;;
@@ -114,37 +127,70 @@ temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gh-issue-finish.XXXXXX")
 trap 'find "$temporary_directory" -type f -delete 2>/dev/null || true; rmdir "$temporary_directory" 2>/dev/null || true' EXIT HUP INT TERM
 
 worktrees_file=$temporary_directory/worktrees
+worktree_rows=$temporary_directory/worktree-rows
 matches_file=$temporary_directory/matches
+possible_file=$temporary_directory/possible
 
 git worktree list --porcelain >"$worktrees_file"
-awk -v number="$number" '
+primary=$(awk '/^worktree / { print substr($0, 10); exit }' "$worktrees_file")
+awk '
   function emit() {
-    if (path != "" && branch ~ ("(^|[-_/])" number "([-_/]|$)")) {
-      print path "\t" branch
-    }
+    if (path != "" && branch != "") print path "\t" branch
   }
-  /^worktree / {
-    path = substr($0, 10)
-    next
-  }
-  /^branch refs\/heads\// {
-    branch = substr($0, 19)
-    next
-  }
-  /^$/ {
-    emit()
-    path = ""
-    branch = ""
-  }
+  /^worktree / { emit(); path = substr($0, 10); branch = ""; next }
+  /^branch refs\/heads\// { branch = substr($0, 19); next }
   END { emit() }
-' "$worktrees_file" >"$matches_file"
+' "$worktrees_file" >"$worktree_rows"
+
+# Classify branch names with the rule that start and status share.
+# $1 is a JSON issue object, $2 is a file of branch names.
+discover() {
+  if ! jq -n --argjson issue "$1" --rawfile names "$2" \
+    '{names: ($names | split("\n") | map(select(length > 0))), issues: [$issue]}' |
+    "$script_directory/branch-discovery.sh" "$canonical_repository" --checkout="$primary" >"$temporary_directory/discovery"; then
+    echo "finish.sh: $(jq -r '.message // "branch discovery failed"' "$temporary_directory/discovery" 2>/dev/null || true)" >&2
+    exit 2
+  fi
+  jq -c '.issues[0]' "$temporary_directory/discovery"
+}
+
+# Select the worktree rows whose branch is in a JSON array.
+rows_on() {
+  jq -rn --argjson wanted "$1" --rawfile rows "$worktree_rows" '
+    $rows | split("\n")[] | select(length > 0) | select(split("\t")[1] as $branch | $wanted | index($branch))'
+}
+
+issue_input=$(printf '%s' "$finish_json" | jq -c --arg repository "$canonical_repository" '
+  .data.repository.issue as $issue |
+  if ($issue.linkedBranches.totalCount // 0) > ($issue.linkedBranches.nodes // [] | length)
+  then error("GitHub truncated linked branches") else . end |
+  {
+    number: $issue.number,
+    title: $issue.title,
+    compound: ($issue.subIssues.totalCount > 0),
+    linked: [$issue.linkedBranches.nodes[]? |
+      select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) | .ref.name]
+  }') || {
+  echo "finish.sh: GitHub truncated the linked branches of issue #$number" >&2
+  exit 2
+}
+cut -f2 "$worktree_rows" >"$temporary_directory/worktree-names"
+discovery=$(discover "$issue_input" "$temporary_directory/worktree-names")
+rows_on "$(printf '%s' "$discovery" | jq -c '.matches')" >"$matches_file"
+rows_on "$(printf '%s' "$discovery" | jq -c '.possible')" >"$possible_file"
 
 match_count=$(wc -l <"$matches_file" | tr -d ' ')
 current_root=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
 
 selected=
-if printf '%s' "$current_branch" | grep -Eq "(^|[-_/])${number}([-_/]|$)"; then
+if [ -n "$selected_branch" ]; then
+  selected=$(awk -F '\t' -v branch="$selected_branch" '$2 == branch { print; exit }' "$worktree_rows")
+  [ -n "$selected" ] || {
+    echo "finish.sh: no worktree holds branch $selected_branch" >&2
+    exit 2
+  }
+elif cut -f2 "$matches_file" | grep -Fx -- "$current_branch" >/dev/null; then
   selected=$(awk -F '\t' -v path="$current_root" '$1 == path { print; exit }' "$matches_file")
 fi
 
@@ -153,12 +199,16 @@ if [ -z "$selected" ] && [ "$match_count" -eq 1 ]; then
 fi
 
 if [ -z "$selected" ]; then
-  if [ "$match_count" -eq 0 ]; then
-    echo "finish.sh: no worktree matches issue #$number" >&2
-  else
-    echo "finish.sh: more than one worktree matches issue #$number" >&2
-    cat "$matches_file" >&2
+  if [ "$match_count" -gt 1 ]; then
+    cut -f2 "$matches_file" >"$temporary_directory/candidates"
+    needs_input branch "More than one worktree matches issue #$number. Which branch should finish use?" "$temporary_directory/candidates"
   fi
+  if [ -s "$possible_file" ]; then
+    # A branch that only contains the issue number never counts as a match.
+    cut -f2 "$possible_file" >"$temporary_directory/candidates"
+    needs_input branch "No worktree holds a branch linked to issue #$number or a branch that fits $(printf '%s' "$discovery" | jq -r '.template'). These worktree branches contain the issue number: $(paste -sd ',' "$temporary_directory/candidates" | sed 's/,/, /g'). Which branch should finish use?" "$temporary_directory/candidates"
+  fi
+  echo "finish.sh: no worktree matches issue #$number" >&2
   exit 2
 fi
 
@@ -237,7 +287,10 @@ if [ -z "$base_branch" ]; then
   if [ -n "$base_override" ]; then
     base_branch=$base_override
   else
-    config=$("$script_directory/start-config.sh" "$canonical_repository")
+    if ! config=$("$script_directory/start-config.sh" "$canonical_repository" --checkout="$primary"); then
+      echo "finish.sh: $(printf '%s' "$config" | jq -r '.message // "cannot resolve the configuration"' 2>/dev/null || true)" >&2
+      exit 2
+    fi
     if [ "$child_total" -eq 0 ]; then
       base_branch=$(printf '%s' "$config" | jq -r '.taskBaseBranch // empty')
     fi
@@ -248,13 +301,27 @@ if [ -z "$base_branch" ]; then
   elif [ -z "$base_branch" ]; then
     parent_candidates=$temporary_directory/parent-candidates
     {
-      awk -F '\t' '{ print $2 }' "$matches_file" 2>/dev/null || true
-      git for-each-ref --format='%(refname:short)' refs/heads refs/remotes/origin
-    } | sed 's#^origin/##' | grep -E "(^|[-_/])${parent_number}([-_/]|$)" | sort -u >"$parent_candidates" || true
+      cut -f2 "$worktree_rows"
+      git for-each-ref --format='%(refname:short)' refs/heads refs/remotes/origin | sed 's#^origin/##'
+    } | awk 'NF' | sort -u >"$temporary_directory/parent-names"
+    parent_input=$(printf '%s' "$finish_json" | jq -c --arg repository "$canonical_repository" '
+      .data.repository.issue.parent | {
+        number,
+        title,
+        compound: true,
+        linked: [.linkedBranches.nodes[]? |
+          select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) | .ref.name]
+      }')
+    parent_discovery=$(discover "$parent_input" "$temporary_directory/parent-names")
+    printf '%s' "$parent_discovery" | jq -r '.matches[]' >"$parent_candidates"
     parent_count=$(wc -l <"$parent_candidates" | tr -d ' ')
     if [ "$parent_count" -ne 1 ]; then
       echo "finish.sh: cannot resolve one base branch for parent issue #$parent_number; rerun with --base BRANCH" >&2
-      cat "$parent_candidates" >&2
+      if [ "$parent_count" -eq 0 ]; then
+        printf '%s' "$parent_discovery" | jq -r '.possible[]' >&2
+      else
+        cat "$parent_candidates" >&2
+      fi
       exit 2
     fi
     base_branch=$(cat "$parent_candidates")

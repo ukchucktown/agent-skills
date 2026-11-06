@@ -20,50 +20,130 @@ needs_input() {
   exit 2
 }
 
-slugify() {
-  printf '%s' "$1" |
-    tr '[:upper:]' '[:lower:]' |
-    sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//' |
-    cut -c1-48 |
-    sed 's/-$//'
+# Record every branch name that start can see: local, origin, and worktree branches.
+collect_names() {
+  {
+    git -C "$primary" for-each-ref --format='%(refname:short)' refs/heads refs/remotes/origin | sed 's#^origin/##'
+    cut -f2 "$worktree_rows"
+  } | awk 'NF' | sort -u >"$names_file"
 }
 
-render_template() {
-  printf '%s' "$1" | sed "s/{number}/$2/g; s/{slug}/$3/g"
+# Classify the branches of every hierarchy issue with the rule that status and finish share.
+discover_hierarchy() {
+  if ! jq -n --rawfile names "$names_file" --slurpfile issues "$issues_file" \
+    '{names: ($names | split("\n") | map(select(length > 0))), issues: $issues[0]}' |
+    "$script_directory/branch-discovery.sh" "$canonical_repository" --checkout="$primary" >"$discovery_file"; then
+    echo "start.sh: $(jq -r '.message // "branch discovery failed"' "$discovery_file" 2>/dev/null || true)" >&2
+    exit 2
+  fi
 }
 
-branch_matches_issue() {
-  printf '%s\n' "$1" | awk -v number="$2" '
-    $0 ~ "(^|[-_/])" number "([-_/]|$)" { found = 1 }
-    END { exit !found }
-  '
+discovered() {
+  jq -r --argjson number "$1" ".issues[] | select(.number == \$number) | $2" "$discovery_file"
 }
 
-collect_candidates() {
-  issue_number=$1
-  output=$2
-  : >"$output"
+branch_known() {
+  grep -Fx -- "$1" "$names_file" >/dev/null
+}
 
-  jq -r --argjson number "$issue_number" --arg repository "$canonical_repository" '
-    .[] | select(.number == $number) |
-    .linkedBranches.nodes[]? |
-    select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) |
-    .ref.name
-  ' "$hierarchy_file" >>"$output"
+valid_branch_name() {
+  git check-ref-format --branch "$1" >/dev/null 2>&1 || {
+    echo "start.sh: $2 is not a valid branch name: $1" >&2
+    exit 2
+  }
+}
 
-  git -C "$primary" for-each-ref --format='%(refname:short)' refs/heads refs/remotes/origin |
-    sed 's#^origin/##' |
-    while IFS= read -r candidate; do
-      if branch_matches_issue "$candidate" "$issue_number"; then
-        printf '%s\n' "$candidate"
+# Ask before start ignores a branch that only contains the issue number.
+ask_possible() {
+  possible_number=$1
+  possible_file=$temporary_directory/possible-$possible_number
+  discovered "$possible_number" '.possible[]' >"$possible_file"
+  [ -s "$possible_file" ] || return 0
+  possible_list=$(paste -sd ',' "$possible_file" | sed 's/,/, /g')
+  possible_intro="Issue #$possible_number has no linked branch and no branch that fits $(discovered "$possible_number" '.template'). These branches contain the issue number: $possible_list."
+  if [ "$possible_number" -ne "$number" ]; then
+    needs_input base "$possible_intro Which existing branch should provide the base for issue #$number?" "$possible_file"
+  fi
+  possible_new=$(discovered "$possible_number" '.rendered // empty')
+  if [ -n "$possible_new" ]; then
+    printf '%s\n' "$possible_new" >>"$possible_file"
+    needs_input branch "$possible_intro Which branch should issue #$number use? Choose $possible_new to create a new branch." "$possible_file"
+  fi
+  needs_input branch "$possible_intro Which branch should issue #$number use? Name a new branch to create one." "$possible_file"
+}
+
+# A template that uses {key} cannot render a branch without a title match.
+ask_missing_key() {
+  [ "$(discovered "$1" '.missingKey')" = "true" ] || return 0
+  missing_intro="The title of issue #$1 does not match branchKey.pattern, so $(discovered "$1" '.template') cannot render {key}."
+  if [ "$1" -ne "$number" ]; then
+    needs_input base "$missing_intro Which existing branch should provide the base for issue #$number?"
+  fi
+  needs_input branch "$missing_intro Which branch should issue #$number use? Name a new branch to create one."
+}
+
+# A rendered name without {number} can be shared. Refuse one that another open issue links.
+verify_links() {
+  link_number=$1
+  link_branch=$2
+  link_text=$(printf '%s' "$3" | tr -d '"')
+  [ -n "$link_text" ] || return 0
+  links_file=$temporary_directory/links-$link_number
+  if ! gh api graphql -F "query=@$script_directory/../references/branch-links.graphql" \
+    -f "search=repo:$canonical_repository is:issue is:open in:title \"$link_text\"" >"$links_file"; then
+    echo "start.sh: cannot read the issues that link branch $link_branch" >&2
+    exit 2
+  fi
+  jq -e '.data.search.issueCount == (.data.search.nodes | length) and
+    all(.data.search.nodes[]; .linkedBranches.totalCount == (.linkedBranches.nodes | length))' "$links_file" >/dev/null || {
+    echo "start.sh: GitHub returned incomplete results for the issues that link branch $link_branch" >&2
+    exit 2
+  }
+  link_conflicts=$(jq -r --argjson number "$link_number" --arg branch "$link_branch" --arg repository "$canonical_repository" '
+    def same: ascii_downcase == ($repository | ascii_downcase);
+    [.data.search.nodes[] |
+      select(.number != $number and .state == "OPEN" and (.repository.nameWithOwner | same)) |
+      select(any(.linkedBranches.nodes[]; .ref.name == $branch and (.ref.repository.nameWithOwner | same))) |
+      "#\(.number)"] | join(", ")' "$links_file")
+  [ -z "$link_conflicts" ] || {
+    echo "start.sh: branch $link_branch belongs to open issue $link_conflicts, not issue #$link_number" >&2
+    exit 2
+  }
+}
+
+# Print the branch of the checkout whose top level is the given path.
+destination_occupant() {
+  occupant_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ "$(CDPATH= cd -- "$1" && pwd -P)" = "$(CDPATH= cd -- "$occupant_top" && pwd -P)" ] || return 1
+  occupant_branch=$(git -C "$1" branch --show-current 2>/dev/null || true)
+  if [ -n "$occupant_branch" ]; then printf 'branch %s\n' "$occupant_branch"; else printf 'a detached HEAD\n'; fi
+}
+
+resolve_destination() {
+  if [ -n "$selected_destination" ]; then
+    destination=$selected_destination
+  else
+    path_output=$temporary_directory/path.json
+    if ! "$script_directory/worktree-path.sh" "$canonical_repository" --checkout="$primary" \
+      --number="$number" --title="$issue_title" --branch="$1" >"$path_output"; then
+      if jq -e '.status == "needs_input"' "$path_output" >/dev/null 2>&1; then
+        needs_input destination "$(jq -r '.message' "$path_output")"
       fi
-    done >>"$output"
-
-  awk -F '\t' -v number="$issue_number" '
-    $2 ~ "(^|[-_/])" number "([-_/]|$)" { print $2 }
-  ' "$worktree_rows" >>"$output"
-
-  sort -u "$output" -o "$output"
+      echo "start.sh: $(jq -r '.message // "cannot render the worktree path"' "$path_output" 2>/dev/null || true)" >&2
+      exit 2
+    fi
+    destination=$(jq -r '.path' "$path_output")
+  fi
+  worktree_location=$(dirname -- "$destination")
+  if [ -n "$existing_worktree" ] || [ ! -e "$destination" ]; then
+    return 0
+  fi
+  if occupant=$(destination_occupant "$destination"); then
+    echo "start.sh: destination $destination already holds a worktree on $occupant" >&2
+    exit 2
+  fi
+  printf '%s\n' "$destination" >"$temporary_directory/destination"
+  needs_input destination "Which unused destination should issue #$number use?" "$temporary_directory/destination"
 }
 
 worktree_for_branch() {
@@ -229,7 +309,10 @@ awk '
   END { emit() }
 ' "$temporary_directory/worktrees" >"$worktree_rows"
 
-config=$("$script_directory/start-config.sh" "$canonical_repository")
+if ! config=$("$script_directory/start-config.sh" "$canonical_repository" --checkout="$primary"); then
+  echo "start.sh: $(printf '%s' "$config" | jq -r '.message // "cannot resolve the configuration"' 2>/dev/null || true)" >&2
+  exit 2
+fi
 configured_base=$(printf '%s' "$config" | jq -r '.taskBaseBranch // empty')
 if [ -z "$selected_base" ] && [ "$(jq -r '.[0].subIssues.totalCount // 0' "$hierarchy_file")" -eq 0 ]; then
   selected_base=$configured_base
@@ -241,20 +324,47 @@ if [ -n "$selected_base" ]; then
   }
 fi
 
+names_file=$temporary_directory/names
+issues_file=$temporary_directory/issues.json
+discovery_file=$temporary_directory/discovery.json
+# Ancestors always use the integration template. The focused issue uses it only with children.
+jq -c --arg repository "$canonical_repository" '
+  [to_entries[] | .key as $index | .value | {
+    number,
+    title,
+    compound: (if $index == 0 then (.subIssues.totalCount // 0) > 0 else true end),
+    linked: [.linkedBranches.nodes[]? |
+      select((.ref.repository.nameWithOwner | ascii_downcase) == ($repository | ascii_downcase)) | .ref.name]
+  }]' "$hierarchy_file" >"$issues_file"
+collect_names
+discover_hierarchy
+
 focused_candidates=$temporary_directory/focused-candidates
-collect_candidates "$number" "$focused_candidates"
+discovered "$number" '.matches[]' >"$focused_candidates"
 focused_candidate_count=$(wc -l <"$focused_candidates" | tr -d ' ')
+focused_branch=
+planned_branch=
 if [ -n "$selected_branch" ]; then
-  if [ "$focused_candidate_count" -gt 0 ] && ! grep -Fx "$selected_branch" "$focused_candidates" >/dev/null; then
+  if [ "$focused_candidate_count" -gt 0 ] && ! grep -Fx -- "$selected_branch" "$focused_candidates" >/dev/null; then
     needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
   fi
-  focused_branch=$selected_branch
+  if branch_known "$selected_branch"; then
+    focused_branch=$selected_branch
+  else
+    # An explicit name that does not exist yet selects a new branch.
+    valid_branch_name "$selected_branch" "The selected branch"
+    planned_branch=$selected_branch
+  fi
 elif [ "$focused_candidate_count" -eq 1 ]; then
   focused_branch=$(sed -n '1p' "$focused_candidates")
+  verify_links "$number" "$focused_branch" "$(discovered "$number" '.linkSearch // empty')"
 elif [ "$focused_candidate_count" -gt 1 ]; then
   needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
 else
-  focused_branch=
+  ask_possible "$number"
+  ask_missing_key "$number"
+  planned_branch=$(discovered "$number" '.rendered')
+  valid_branch_name "$planned_branch" "$(discovered "$number" '.template')"
 fi
 
 existing_worktree=
@@ -272,24 +382,9 @@ if [ -n "$focused_branch" ]; then
 fi
 
 issue_title=$(jq -r '.[0].title' "$hierarchy_file")
-issue_slug=$(slugify "$issue_title")
-[ -n "$issue_slug" ] || issue_slug=work
-repository_name=${canonical_repository#*/}
-configured_root=$(printf '%s' "$config" | jq -r '.worktreeRoot // empty')
-if [ -z "$configured_root" ]; then
-  checkout_container=$(dirname -- "$primary")
-  configured_root="$(dirname -- "$checkout_container")/worktrees"
-fi
-repository_worktree_root=${configured_root%/}/$repository_name
-worktree_template=$(printf '%s' "$config" | jq -r '.worktreeTemplate')
-worktree_name=$(render_template "$worktree_template" "$number" "$issue_slug")
-destination=${selected_destination:-${repository_worktree_root%/}/$worktree_name}
-worktree_location=$(dirname -- "$destination")
-worktree_name=$(basename -- "$destination")
-
-if [ -z "$existing_worktree" ] && [ -e "$destination" ]; then
-  printf '%s\n' "$destination" >"$temporary_directory/destination"
-  needs_input destination "Which unused destination should issue #$number use?" "$temporary_directory/destination"
+destination=
+if [ -z "$existing_worktree" ]; then
+  resolve_destination "${focused_branch:-$planned_branch}"
 fi
 
 project_output=$temporary_directory/project-output
@@ -351,7 +446,11 @@ if [ -n "$focused_branch" ] && [ "$mode" = "start" ]; then
   printf 'Branch: %s\n' "$focused_branch"
   printf 'Worktree: none\n'
   render_projects
-  printf 'Next: resume issue #%s to attach its existing branch.\n' "$number"
+  if [ -n "$selected_branch" ]; then
+    printf 'Next: resume issue #%s with --branch %s to attach its existing branch.\n' "$number" "$selected_branch"
+  else
+    printf 'Next: resume issue #%s to attach its existing branch.\n' "$number"
+  fi
   exit 0
 fi
 
@@ -359,42 +458,38 @@ creation_plan=$temporary_directory/creation-plan
 : >"$creation_plan"
 if [ -z "$focused_branch" ]; then
   git -C "$primary" fetch origin
+  # The fetch can reveal branches that discovery must see before any creation.
+  collect_names
+  discover_hierarchy
   previous_branch=${selected_base:-$default_branch}
   previous_ref=$(branch_reference "$previous_branch")
   comparison_branch=$previous_branch
   if [ -z "$selected_base" ]; then
-    jq -c 'reverse[]' "$hierarchy_file" >"$temporary_directory/hierarchy-lines"
+    jq -r 'reverse[] | .number' "$hierarchy_file" >"$temporary_directory/hierarchy-lines"
   else
-    jq -c '.[0]' "$hierarchy_file" >"$temporary_directory/hierarchy-lines"
+    jq -r '.[0].number' "$hierarchy_file" >"$temporary_directory/hierarchy-lines"
   fi
 
-  while IFS= read -r issue; do
-    item_number=$(printf '%s' "$issue" | jq -r '.number')
-    item_title=$(printf '%s' "$issue" | jq -r '.title')
-    item_slug=$(slugify "$item_title")
-    [ -n "$item_slug" ] || item_slug=work
+  while IFS= read -r item_number; do
     item_candidates=$temporary_directory/candidates-$item_number
-    collect_candidates "$item_number" "$item_candidates"
+    discovered "$item_number" '.matches[]' >"$item_candidates"
     item_candidate_count=$(wc -l <"$item_candidates" | tr -d ' ')
 
     if [ "$item_number" -eq "$number" ] && [ -n "$selected_branch" ]; then
       item_branch=$selected_branch
+      if ! branch_known "$item_branch"; then
+        printf '%s\t%s\t%s\n' "$item_number" "$item_branch" "$previous_branch" >>"$creation_plan"
+      fi
     elif [ "$item_candidate_count" -eq 1 ]; then
       item_branch=$(sed -n '1p' "$item_candidates")
+      verify_links "$item_number" "$item_branch" "$(discovered "$item_number" '.linkSearch // empty')"
     elif [ "$item_candidate_count" -gt 1 ]; then
       needs_input base "Which existing branch should provide the base for issue #$number?" "$item_candidates"
     else
-      if [ "$item_number" -eq "$number" ]; then
-        child_count=$(printf '%s' "$issue" | jq -r '.subIssues.totalCount // 0')
-        if [ "$child_count" -gt 0 ]; then
-          template=$(printf '%s' "$config" | jq -r '.integrationBranchTemplate')
-        else
-          template=$(printf '%s' "$config" | jq -r '.taskBranchTemplate')
-        fi
-      else
-        template=$(printf '%s' "$config" | jq -r '.integrationBranchTemplate')
-      fi
-      item_branch=$(render_template "$template" "$item_number" "$item_slug")
+      ask_possible "$item_number"
+      ask_missing_key "$item_number"
+      item_branch=$(discovered "$item_number" '.rendered')
+      valid_branch_name "$item_branch" "$(discovered "$item_number" '.template')"
       printf '%s\t%s\t%s\n' "$item_number" "$item_branch" "$previous_branch" >>"$creation_plan"
     fi
     if [ "$item_candidate_count" -eq 1 ] && [ "$item_number" -ne "$number" ]; then
@@ -410,6 +505,11 @@ if [ -z "$focused_branch" ]; then
     previous_branch=$item_branch
     if [ "$item_number" -eq "$number" ]; then focused_branch=$item_branch; fi
   done <"$temporary_directory/hierarchy-lines"
+
+  # A branch that appeared in the fetch can change a destination that uses {branch}.
+  if [ "$focused_branch" != "$planned_branch" ]; then
+    resolve_destination "$focused_branch"
+  fi
 fi
 
 while IFS="$(printf '\t')" read -r item_number item_branch item_base; do

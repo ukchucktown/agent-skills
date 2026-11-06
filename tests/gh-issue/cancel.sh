@@ -41,6 +41,12 @@ create_worktree feat/issue-81-dirty-divergent "$dirty_worktree" dirty.txt
 create_worktree feat/issue-82-active "$active_worktree" active.txt
 create_worktree feat/issue-83-protected "$protected_worktree" protected.txt
 "$real_git" -C "$primary" branch feat/issue-999-unrelated main
+# The branch of an unrelated open issue also names #81 of the effort. Its
+# worktree holds unmerged and uncommitted work that cancel must keep.
+unrelated_worktree=$temporary_directory/issue-990
+create_worktree feat/issue-990-retry-81-times "$unrelated_worktree" unrelated.txt
+# Issue #85 has no linked branch. This branch only contains its number.
+"$real_git" -C "$primary" branch fix/85-typo main
 
 "$real_git" -C "$primary" push -q -u origin main
 "$real_git" -C "$primary" push -q origin \
@@ -54,6 +60,7 @@ printf 'local only\n' >>"$dirty_worktree/dirty.txt"
 "$real_git" -C "$dirty_worktree" add dirty.txt
 "$real_git" -C "$dirty_worktree" commit -q -m 'Diverge locally'
 printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
+printf 'draft\n' >"$unrelated_worktree/draft.txt"
 
 remote=$(CDPATH= cd -- "$remote" && pwd -P)
 primary=$("$real_git" -C "$primary" rev-parse --show-toplevel)
@@ -184,6 +191,12 @@ printf '%s\n' "$plan_output" | grep -F 'feat/issue-999-unrelated' >/dev/null && 
   echo 'cancel plan included an unrelated branch' >&2
   exit 1
 }
+printf '%s\n' "$plan_output" | grep -F 'feat/issue-990-retry-81-times' >/dev/null && {
+  echo 'cancel plan included the branch of an unrelated issue that names #81' >&2
+  exit 1
+}
+printf '%s\n' "$plan_output" | grep -F \
+  'fix/85-typo: name contains #85 but does not fit feat/issue-{number}-{slug}' >/dev/null
 [ ! -s "$call_log" ]
 [ -d "$root_worktree" ]
 [ -d "$dirty_worktree" ]
@@ -327,6 +340,9 @@ done
 "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/issue-83-protected
 "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/issue-999-unrelated
 "$real_git" --git-dir="$remote" show-ref --verify --quiet refs/heads/feat/issue-999-unrelated
+[ -f "$unrelated_worktree/draft.txt" ]
+"$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/issue-990-retry-81-times
+"$real_git" -C "$primary" show-ref --verify --quiet refs/heads/fix/85-typo
 
 [ ! -e "$fake_bin/supacode-calls" ]
 
