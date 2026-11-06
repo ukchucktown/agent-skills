@@ -92,6 +92,17 @@ refuse_recorded() {
   fi
 }
 
+# A branch that the issue links but the record gives to another issue is a
+# conflict. Start shows the conflict and makes no change.
+refuse_conflicts() {
+  conflict=$(discovered "$1" '.conflicts[0] // empty | "\(.branch)\t\(.issue)"')
+  [ -n "$conflict" ] || return 0
+  conflict_branch=$(printf '%s' "$conflict" | cut -f1)
+  conflict_issue=$(printf '%s' "$conflict" | cut -f2)
+  echo "start.sh: issue #$1 links branch $conflict_branch, but this clone records it for issue #$conflict_issue. Resolve the conflict first. If issue #$conflict_issue no longer owns the branch, remove the record: git config --unset branch.$conflict_branch.gh-issue" >&2
+  exit 2
+}
+
 record_branch() {
   git -C "$primary" config "branch.$2.gh-issue" "$1"
 }
@@ -364,6 +375,7 @@ elif [ "$focused_candidate_count" -eq 1 ]; then
 elif [ "$focused_candidate_count" -gt 1 ]; then
   needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
 else
+  refuse_conflicts "$number"
   check_rendered "$number"
   ask_possible "$number"
   ask_missing_key "$number"
@@ -491,6 +503,7 @@ if [ -z "$focused_branch" ]; then
     elif [ "$item_candidate_count" -gt 1 ]; then
       needs_input base "Which existing branch should provide the base for issue #$number?" "$item_candidates"
     else
+      refuse_conflicts "$item_number"
       check_rendered "$item_number"
       ask_possible "$item_number"
       ask_missing_key "$item_number"

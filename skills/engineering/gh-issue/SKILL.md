@@ -291,7 +291,7 @@ that no link or local branch record ties to the issue. Another issue can own an
 unverified branch, so choose it only when the user confirms that it belongs to
 this issue. When `--branch` names a branch that does not exist, start creates
 that branch. Start refuses a branch that the local record gives to another
-issue.
+issue, also a branch that the issue links.
 A `branch` or `destination` question with no candidates asks the user for a
 name, because the issue title has no effort key.
 

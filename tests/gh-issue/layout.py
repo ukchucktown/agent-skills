@@ -318,6 +318,39 @@ class Layout(unittest.TestCase):
         self.assertIn('belongs to issue #12 in this clone', result.stderr)
         self.assertNotIn('close', result.stdout)
 
+    def test_link_and_record_for_different_issues_is_a_conflict(self):
+        self.key_workspace()
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            12: {'title': '[TICKET-42] Add export'}, 14: {'title': '[TICKET-42] Document export'}})
+        self.run_script(web, 'start.sh', 'start', 'example/app-web', '12')
+        # GitHub also links the branch to #14, but this clone records it for #12.
+        self.edit_issue('example/app-web', 14, linked=['feat/ticket-42'])
+        before = self.mutations()
+        for mode in ('start', 'resume'):
+            result = self.run_script(web, 'start.sh', mode, 'example/app-web', '14', code=2)
+            self.assertIn('issue #14 links branch feat/ticket-42, but this clone records it for issue #12', result.stderr)
+        self.assertEqual(self.mutations(), before)
+        self.assertEqual(self.record(web, 'feat/ticket-42'), '12')
+        output = self.run_script(web, 'status.sh', 'example/app-web', '14').stdout
+        self.assertEqual(self.field(output, 'Local worktrees'), 'none')
+        result = self.run_script(web, 'finish.sh', '--dry-run', 'example/app-web', '14', code=2)
+        self.assertIn('records it for issue #12', result.stderr)
+        self.assertNotIn('close', result.stdout)
+
+    def test_finish_keeps_a_linked_branch_without_a_worktree(self):
+        primary = self.repository('example/plain', self.home / 'code/plain', {5: {'title': 'First task'}})
+        output = self.run_script(primary, 'start.sh', 'start', 'example/plain', '5').stdout
+        self.git(primary, 'worktree', 'remove', self.field(output, 'Worktree'))
+        self.git(primary, 'worktree', 'add', '-q', '-b', 'topic/other', str(self.root / 'other'), 'main')
+        answer = json.loads(self.run_script(primary, 'finish.sh', '--dry-run', '--branch', 'topic/other',
+                                            'example/plain', '5', code=2).stdout)
+        self.assertEqual((answer['field'], answer['candidates']), ('branch', ['feat/issue-5-first-task']))
+        result = self.run_script(primary, 'finish.sh', '--dry-run', 'example/plain', '5', code=2)
+        self.assertIn('feat/issue-5-first-task with no worktree; resume issue #5', result.stderr)
+        result = self.run_script(primary, 'finish.sh', '--dry-run', '--branch', 'feat/issue-5-first-task',
+                                 'example/plain', '5', code=2)
+        self.assertIn('no worktree holds branch feat/issue-5-first-task', result.stderr)
+
     def test_constant_template_cannot_give_one_branch_to_two_issues(self):
         self.write_workspace({'taskBranchTemplate': 'feat/shared'})
         web = self.repository('example/app-web', self.workspace / 'web', {

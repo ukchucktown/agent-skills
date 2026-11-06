@@ -181,6 +181,10 @@ rows_on "$(printf '%s' "$discovery" | jq -c '.matches')" >"$matches_file"
 rows_on "$(printf '%s' "$discovery" | jq -c '.possible + .unverified')" >"$possible_file"
 
 match_count=$(wc -l <"$matches_file" | tr -d ' ')
+# The issue branches decide the selection. A branch without a worktree still
+# belongs to the issue.
+issue_branches=$temporary_directory/issue-branches
+printf '%s' "$discovery" | jq -r '.matches[]' >"$issue_branches"
 current_root=$(git rev-parse --show-toplevel)
 current_branch=$(git branch --show-current)
 
@@ -192,13 +196,12 @@ if [ -n "$selected_branch" ]; then
     echo "finish.sh: branch $selected_branch belongs to issue #$recorded_issue in this clone, not issue #$number" >&2
     exit 2
   fi
-  if [ "$match_count" -gt 0 ] && ! cut -f2 "$matches_file" | grep -Fx -- "$selected_branch" >/dev/null; then
-    cut -f2 "$matches_file" >"$temporary_directory/candidates"
-    needs_input branch "Issue #$number already has a matching worktree branch. Which of these branches should finish use?" "$temporary_directory/candidates"
+  if [ -s "$issue_branches" ] && ! grep -Fx -- "$selected_branch" "$issue_branches" >/dev/null; then
+    needs_input branch "Branches already belong to issue #$number. Which of these branches should finish use?" "$issue_branches"
   fi
   selected=$(awk -F '\t' -v branch="$selected_branch" '$2 == branch { print; exit }' "$worktree_rows")
   [ -n "$selected" ] || {
-    echo "finish.sh: no worktree holds branch $selected_branch" >&2
+    echo "finish.sh: no worktree holds branch $selected_branch; resume issue #$number to attach it" >&2
     exit 2
   }
 elif cut -f2 "$matches_file" | grep -Fx -- "$current_branch" >/dev/null; then
@@ -213,6 +216,15 @@ if [ -z "$selected" ]; then
   if [ "$match_count" -gt 1 ]; then
     cut -f2 "$matches_file" >"$temporary_directory/candidates"
     needs_input branch "More than one worktree matches issue #$number. Which branch should finish use?" "$temporary_directory/candidates"
+  fi
+  if [ -s "$issue_branches" ]; then
+    echo "finish.sh: issue #$number has branch $(paste -sd ',' "$issue_branches" | sed 's/,/, /g') with no worktree; resume issue #$number to attach it" >&2
+    exit 2
+  fi
+  conflict=$(printf '%s' "$discovery" | jq -r '.conflicts[0] // empty | "\(.branch)\t\(.issue)"')
+  if [ -n "$conflict" ]; then
+    echo "finish.sh: issue #$number links branch $(printf '%s' "$conflict" | cut -f1), but this clone records it for issue #$(printf '%s' "$conflict" | cut -f2). Resolve the conflict first." >&2
+    exit 2
   fi
   if [ -s "$possible_file" ]; then
     # A branch that only contains the issue number never counts as a match.

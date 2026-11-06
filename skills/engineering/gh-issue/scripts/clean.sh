@@ -454,7 +454,8 @@ jq -r --slurpfile discovery "$discovery_file" '
   .[] | select((.scope // "in") != "out") | . as $issue |
   ($discovery[0].issues[] | select(.number == $issue.number)) as $found |
   ($found.possible[] | [., "name contains #\($issue.number) but does not fit \($found.template)"]),
-  ($found.unverified[] | [., "no link or branch record ties it to #\($issue.number)"]) | @tsv
+  ($found.unverified[] | [., "no link or branch record ties it to #\($issue.number)"]),
+  ($found.conflicts[] | [.branch, "linked to #\($issue.number) but recorded for #\(.issue) in this clone"]) | @tsv
 ' "$issues_file" | awk -F '\t' 'FILENAME == ARGV[1] { keep[$0] = 1; next } ($1 in keep)' "$all_branches" - |
   awk -F '\t' 'FILENAME == ARGV[1] { member[$0] = 1; next } !($1 in member) && !seen[$1]++' "$candidate_branches" - \
   >"$possible_branches"

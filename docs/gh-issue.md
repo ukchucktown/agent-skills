@@ -140,10 +140,11 @@ title has no key.
 Start records the issue of each branch that it creates or attaches in the Git
 configuration of the clone. Start, status, finish, clean, and cancel never give
 a branch to an issue when the record names another issue. Start refuses such a
-branch, also when you name it with `--branch`. Two issues with the same effort
-key thus cannot share one branch in one repository. A shared branch name that
-no link or record ties to the issue needs your answer before start uses it.
-Start also refuses a destination that holds a worktree on a different branch.
+branch, also when you name it with `--branch` or the issue links it. Two issues
+with the same effort key thus cannot share one branch in one repository. A
+shared branch name that no link or record ties to the issue needs your answer
+before start uses it. Start also refuses a destination that holds a worktree on
+a different branch.
 
 Start preserves existing assignees and reports their names. Before branch
 creation, start checks whether each ancestor branch lacks commits from its

@@ -286,6 +286,9 @@ the local branch.
 
 Every command reads the record:
 
+- A linked branch whose record names another issue is a conflict. Start and
+  finish stop and show the conflict. Status does not count the branch as a
+  local worktree of the issue. Clean and cancel keep the branch.
 - A name match or a possible branch whose record names another issue does not
   belong to the issue.
 - Start and finish refuse an explicit `--branch` value whose record names
@@ -302,7 +305,8 @@ asks the question for an unverified branch and does not refuse it. Start also
 refuses a destination that holds a worktree on a different branch.
 
 When branches already belong to the issue, `finish --branch` must name one of
-them.
+them, also when no worktree holds that branch. Without `--branch`, finish
+reports an issue branch with no worktree and asks you to resume the issue.
 
 ### Clean coverage
 

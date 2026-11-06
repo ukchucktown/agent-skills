@@ -630,12 +630,15 @@ function discover(effective, issue, names, records) {
   const missingKey = variables.includes('key') && key === null;
   const rendered = missingKey ? null : render(template, { number: issue.number, slug, key });
   const result = { number: issue.number, template, key, rendered, missingKey };
-  const linked = sortedUnique(issue.linked);
-  if (linked.length) {
-    return { ...result, source: 'linked', matches: linked, possible: [], unverified: [], claimed: [] };
-  }
   const recorded = name => own(records, name) ? records[name] : null;
   const elsewhere = name => recorded(name) !== null && recorded(name) !== issue.number;
+  const linked = sortedUnique(issue.linked);
+  if (linked.length) {
+    // A link and a record that name different issues are conflicting evidence.
+    const conflicts = linked.filter(elsewhere).map(branch => ({ branch, issue: recorded(branch) }));
+    return { ...result, source: 'linked', matches: linked.filter(name => !elsewhere(name)),
+      possible: [], unverified: [], claimed: [], conflicts };
+  }
   const pattern = variables.includes('number') ? templatePattern(template, issue.number) : null;
   const fits = sortedUnique(names.filter(name => pattern ? pattern.test(name) : name === rendered));
   // Every issue with the same key renders a name without {number}, so only the
@@ -646,7 +649,7 @@ function discover(effective, issue, names, records) {
   // The historical number rule now identifies only possible branches for a question.
   const numberRule = new RegExp('(^|[-_/])' + issue.number + '([-_/]|$)');
   const possible = sortedUnique(names.filter(name => numberRule.test(name) && !fits.includes(name) && !elsewhere(name)));
-  return { ...result, source: matches.length ? 'template' : 'none', matches, possible, unverified, claimed };
+  return { ...result, source: matches.length ? 'template' : 'none', matches, possible, unverified, claimed, conflicts: [] };
 }
 
 // Read the issue that start recorded for each branch in this clone.
