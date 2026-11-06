@@ -606,11 +606,24 @@ function render(template, values) {
   return template.replace(PLACEHOLDER, (whole, name) => own(values, name) ? String(values[name]) : whole);
 }
 
-function templatePattern(template, number) {
+// Each placeholder matches only its own kind of text, so the issue number cannot
+// match inside another field. {key} is the key of the issue, {slug} has the shape
+// of a slug, and {number} cannot touch other digits. A template that uses {key}
+// has no pattern for an issue without a key.
+const SLUG_PATTERN = '[a-z0-9]+(?:-[a-z0-9]+)*';
+function templatePattern(template, number, key) {
   const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let source = '', last = 0;
   for (const match of template.matchAll(PLACEHOLDER)) {
-    source += escape(template.slice(last, match.index)) + (match[1] === 'number' ? String(number) : '.+');
+    source += escape(template.slice(last, match.index));
+    if (match[1] === 'number') {
+      source += '(?<![0-9])' + number + '(?![0-9])';
+    } else if (match[1] === 'key') {
+      if (key === null) return null;
+      source += escape(key);
+    } else {
+      source += SLUG_PATTERN;
+    }
     last = match.index + match[0].length;
   }
   return new RegExp('^' + source + escape(template.slice(last)) + '$');
@@ -639,16 +652,27 @@ function discover(effective, issue, names, records) {
     return { ...result, source: 'linked', matches: linked.filter(name => !elsewhere(name)),
       possible: [], unverified: [], claimed: [], conflicts };
   }
-  const pattern = variables.includes('number') ? templatePattern(template, issue.number) : null;
-  const fits = sortedUnique(names.filter(name => pattern ? pattern.test(name) : name === rendered));
+  const numbered = variables.includes('number');
+  const pattern = numbered ? templatePattern(template, issue.number, key) : null;
+  const candidates = names.filter(name => numbered ? pattern !== null && pattern.test(name) : name === rendered);
+  // A branch that also fits the template with another number from its name is
+  // ambiguous. It needs an answer, like a possible branch.
+  const fitsOther = name => (name.match(/[0-9]+/g) ?? []).some(run => {
+    const other = Number(run);
+    if (other === issue.number || other <= 0 || String(other) !== run) return false;
+    return templatePattern(template, other, key)?.test(name) ?? false;
+  });
+  const ambiguous = numbered ? candidates.filter(fitsOther) : [];
+  const fits = sortedUnique(candidates.filter(name => !ambiguous.includes(name)));
   // Every issue with the same key renders a name without {number}, so only the
   // record of this issue proves that such a name belongs to it.
-  const unverified = pattern ? [] : fits.filter(name => recorded(name) === null);
+  const unverified = numbered ? [] : fits.filter(name => recorded(name) === null);
   const matches = fits.filter(name => !elsewhere(name) && !unverified.includes(name));
   const claimed = fits.filter(elsewhere).map(branch => ({ branch, issue: recorded(branch) }));
   // The historical number rule now identifies only possible branches for a question.
   const numberRule = new RegExp('(^|[-_/])' + issue.number + '([-_/]|$)');
-  const possible = sortedUnique(names.filter(name => numberRule.test(name) && !fits.includes(name) && !elsewhere(name)));
+  const possible = sortedUnique([...ambiguous, ...names.filter(name => numberRule.test(name) && !candidates.includes(name))])
+    .filter(name => !elsewhere(name));
   return { ...result, source: matches.length ? 'template' : 'none', matches, possible, unverified, claimed, conflicts: [] };
 }
 

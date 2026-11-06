@@ -364,6 +364,60 @@ class Layout(unittest.TestCase):
         self.assertEqual((self.field(output, 'Status'), self.field(output, 'Branch')), ('started', 'feat/shared'))
         self.assertEqual(self.record(web, 'feat/shared'), '14')
 
+    def test_explicit_branch_is_checked_again_after_the_fetch(self):
+        self.write_workspace({'taskBranchTemplate': 'feat/shared'})
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            12: {'title': 'First change', 'linked': ['feat/shared']}, 14: {'title': 'Later change'}})
+        # Another clone created and linked the branch. This clone has not fetched it,
+        # so the branch has no remote-tracking reference here.
+        remote = json.loads(self.state.read_text())['repositories']['example/app-web']['remote']
+        subprocess.run([self.env['REAL_GIT'], '--git-dir=' + remote, 'update-ref', 'refs/heads/feat/shared',
+                        self.git(web, 'rev-parse', 'main')], check=True, env=self.env)
+        self.assertEqual(self.git(web, 'branch', '-r', '--list', 'origin/feat/shared'), '')
+        output = self.run_script(web, 'start.sh', 'start', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Status'), 'already_started')
+        self.assertEqual(self.record(web, 'feat/shared'), '12')
+        before = self.mutations()
+        result = self.run_script(web, 'start.sh', 'resume', '--branch', 'feat/shared', 'example/app-web', '14', code=2)
+        self.assertIn('feat/shared belongs to issue #12 in this clone', result.stderr)
+        self.assertEqual(self.mutations(), before)
+        self.assertEqual(self.record(web, 'feat/shared'), '12')
+        output = self.run_script(web, 'start.sh', 'resume', 'example/app-web', '12').stdout
+        self.assertEqual((self.field(output, 'Status'), self.field(output, 'Branch')), ('resumed', 'feat/shared'))
+
+    def test_issue_number_matches_only_in_its_own_field(self):
+        self.write_workspace({'taskBranchTemplate': 'feat/{key}-{number}-{slug}',
+                              'branchKey': {'from': 'titlePrefix', 'pattern': KEY_PATTERN}})
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            3: {'title': '[TICKET-42] Fix timeout'}, 12: {'title': '[TICKET-42] Retry 3 times'}})
+        branch = 'feat/ticket-42-12-ticket-42-retry-3-times'
+        self.git(web, 'worktree', 'add', '-q', '-b', branch, str(self.root / 'issue-12'), 'main')
+        # For #3, the 3 in the slug of #12 is not in the {number} field.
+        output = self.run_script(web, 'status.sh', 'example/app-web', '3').stdout
+        self.assertEqual((self.field(output, 'Local worktrees'), self.field(output, 'Started')), ('none', 'no'))
+        answer = json.loads(self.run_script(web, 'finish.sh', '--dry-run', 'example/app-web', '3', code=2).stdout)
+        self.assertEqual((answer['field'], answer['candidates']), ('branch', [branch]))
+        answer = json.loads(self.run_script(web, 'start.sh', 'resume', 'example/app-web', '3', code=2).stdout)
+        self.assertIn(branch, answer['candidates'])
+        self.assertEqual(self.record(web, branch), '')
+        # For #12, the branch matches.
+        output = self.run_script(web, 'status.sh', 'example/app-web', '12').stdout
+        self.assertIn('[' + branch + ']', self.field(output, 'Local worktrees'))
+        self.assertEqual(self.mutations(), [])
+
+    def test_ambiguous_template_match_needs_an_answer(self):
+        # With {slug} on both sides of {number}, the branch fits #3 and #12.
+        self.write_workspace({'taskBranchTemplate': '{slug}-{number}-{slug}'})
+        self.repository('example/app-web', self.workspace / 'web', {})
+        request = {'names': ['fix-3-retry-12-x'], 'issues': [
+            {'number': 3, 'title': 'Fix', 'compound': False, 'linked': []},
+            {'number': 12, 'title': 'Retry', 'compound': False, 'linked': []}]}
+        result = subprocess.run([str(SCRIPTS / 'branch-discovery.sh'), 'example/app-web',
+                                 '--checkout=' + str(self.workspace / 'web')], input=json.dumps(request),
+                                cwd=self.root, env=self.env, capture_output=True, text=True, check=True)
+        for issue in json.loads(result.stdout)['issues']:
+            self.assertEqual((issue['matches'], issue['possible']), ([], ['fix-3-retry-12-x']))
+
     def test_finish_keeps_a_linked_branch_without_a_worktree(self):
         primary = self.repository('example/plain', self.home / 'code/plain', {5: {'title': 'First task'}})
         output = self.run_script(primary, 'start.sh', 'start', 'example/plain', '5').stdout

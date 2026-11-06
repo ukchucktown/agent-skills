@@ -250,7 +250,9 @@ belong to an issue:
 1. The linked branches of the issue in the same repository come first.
 2. When the issue has no linked branch, the rule uses a name match. A branch
    matches when it fits the effective branch template with the issue number in
-   the `{number}` position. The other variables match any text. For a template
+   the `{number}` position. `{key}` matches only the key of the issue, and
+   `{slug}` matches only lowercase letters and digits in groups that hyphens
+   separate. The issue number cannot touch another digit. For a template
    without `{number}`, only the rendered branch name matches.
 3. A name match never counts when the branch record names another issue. The
    [branch records](#branch-records) section describes the record.
@@ -261,6 +263,9 @@ For the template `feat/issue-{number}-{slug}`, issue #3 matches
 
 A possible branch contains the issue number between separators, but the branch
 does not match. For example, `fix/3-timeout` is a possible branch for issue #3.
+A branch that also fits the template with another number from its name is
+ambiguous, and it is a possible branch too. For example, the template
+`{slug}-{number}-{slug}` fits `fix-3-retry-12-x` for both #3 and #12.
 A possible branch never counts as a match:
 
 - Start asks a question when nothing matches and possible branches exist. The

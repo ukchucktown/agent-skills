@@ -497,6 +497,11 @@ if [ -z "$focused_branch" ]; then
     item_candidate_count=$(wc -l <"$item_candidates" | tr -d ' ')
 
     if [ "$item_number" -eq "$number" ] && [ -n "$selected_branch" ]; then
+      # The fetch can reveal the explicit branch, its owner, or other issue branches.
+      refuse_recorded "$number" "$selected_branch"
+      if [ "$item_candidate_count" -gt 0 ] && ! grep -Fx -- "$selected_branch" "$item_candidates" >/dev/null; then
+        needs_input branch "Which existing branch should issue #$number use?" "$item_candidates"
+      fi
       item_branch=$selected_branch
       if ! branch_known "$item_branch"; then
         printf '%s\t%s\t%s\n' "$item_number" "$item_branch" "$previous_branch" >>"$creation_plan"
