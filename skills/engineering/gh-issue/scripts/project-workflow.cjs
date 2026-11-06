@@ -213,7 +213,7 @@ function migrate(raw) {
   return layer(value);
 }
 
-function resolver(raw, override, workspace = null) {
+function resolver(raw, override, workspace = null, { layout = true } = {}) {
   // Normalize once per invocation, even when several ancestors share a repository.
   const normalized = migrate(raw);
   const invocation = layer(override);
@@ -239,7 +239,8 @@ function resolver(raw, override, workspace = null) {
         sources['projectSync.boards.' + identity + '.enabled'] = 'default';
       }
     }
-    validateLayout(effective, sources);
+    // Board transitions read no layout settings and have no workspace file.
+    if (layout) validateLayout(effective, sources);
     const result = { status: 'resolved', repository, effective, sources };
     cache.set(repository, result);
     return result;
@@ -617,28 +618,57 @@ function templatePattern(template, number) {
 
 const sortedUnique = values => [...new Set(values)].sort();
 
-// Decide which branch names belong to one issue. Start, status, and finish share this rule.
-function discover(effective, issue, names) {
+// Decide which branch names belong to one issue. Start, status, finish, clean,
+// and cancel share this rule. A link is the proof of ownership. Without a link,
+// a name match counts only when no evidence gives the branch to another issue.
+// `records` maps a branch to the issue that start recorded for it in this clone.
+function discover(effective, issue, names, records) {
   const template = issue.compound ? effective.integrationBranchTemplate : effective.taskBranchTemplate;
   const variables = placeholders(template);
-  const { key, text } = issueKey(effective, issue.title);
+  const { key } = issueKey(effective, issue.title);
   const slug = slugify(issue.title);
   const missingKey = variables.includes('key') && key === null;
   const rendered = missingKey ? null : render(template, { number: issue.number, slug, key });
   const result = { number: issue.number, template, key, rendered, missingKey };
   const linked = sortedUnique(issue.linked);
-  if (linked.length) return { ...result, source: 'linked', matches: linked, possible: [], linkSearch: null };
+  if (linked.length) {
+    return { ...result, source: 'linked', matches: linked, possible: [], unverified: [], claimed: [] };
+  }
+  const recorded = name => own(records, name) ? records[name] : null;
+  const elsewhere = name => recorded(name) !== null && recorded(name) !== issue.number;
   const pattern = variables.includes('number') ? templatePattern(template, issue.number) : null;
-  const matches = sortedUnique(names.filter(name => pattern ? pattern.test(name) : name === rendered));
+  const fits = sortedUnique(names.filter(name => pattern ? pattern.test(name) : name === rendered));
+  // Every issue with the same key renders a name without {number}, so only the
+  // record of this issue proves that such a name belongs to it.
+  const unverified = pattern ? [] : fits.filter(name => recorded(name) === null);
+  const matches = fits.filter(name => !elsewhere(name) && !unverified.includes(name));
+  const claimed = fits.filter(elsewhere).map(branch => ({ branch, issue: recorded(branch) }));
   // The historical number rule now identifies only possible branches for a question.
   const numberRule = new RegExp('(^|[-_/])' + issue.number + '([-_/]|$)');
-  const possible = sortedUnique(names.filter(name => numberRule.test(name) && !matches.includes(name)));
-  // A rendered name without {number} can be shared, so start must read who links it.
-  const linkSearch = matches.length && !pattern ? (variables.includes('key') ? text : slug.replace(/-/g, ' ')) : null;
-  return { ...result, source: matches.length ? 'template' : 'none', matches, possible, linkSearch };
+  const possible = sortedUnique(names.filter(name => numberRule.test(name) && !fits.includes(name) && !elsewhere(name)));
+  return { ...result, source: matches.length ? 'template' : 'none', matches, possible, unverified, claimed };
 }
 
-function branchesCommand(effective, workspace) {
+// Read the issue that start recorded for each branch in this clone.
+function branchRecords(checkout) {
+  const records = Object.create(null);
+  if (!checkout) return records;
+  const { spawnSync } = require('node:child_process');
+  const result = spawnSync('git', ['-C', checkout, 'config', '--get-regexp', '^branch\\..*\\.gh-issue$'],
+    { encoding: 'utf8' });
+  // Git exits with 1 when no key matches.
+  if (result.status === 1) return records;
+  if (result.error || result.status !== 0) {
+    throw new Problem('Cannot read the branch records of ' + checkout + ': ' + (result.stderr || result.error?.message || '').trim());
+  }
+  for (const line of result.stdout.split('\n')) {
+    const match = /^branch\.(.+)\.gh-issue ([1-9][0-9]*)$/.exec(line);
+    if (match) records[match[1]] = Number(match[2]);
+  }
+  return records;
+}
+
+function branchesCommand(effective, workspace, checkout) {
   let input;
   try {
     input = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -649,14 +679,15 @@ function branchesCommand(effective, workspace) {
   if (!object(input) || !strings(input.names) || !Array.isArray(input.issues)) {
     throw new Problem('Branch discovery expects names and issues');
   }
+  const records = branchRecords(checkout);
   const issues = input.issues.map(issue => {
     if (!object(issue) || !Number.isSafeInteger(issue.number) || typeof issue.title !== 'string' ||
         typeof issue.compound !== 'boolean' || !strings(issue.linked)) {
       throw new Problem('Each issue needs number, title, compound, and linked');
     }
-    return discover(effective, issue, input.names);
+    return discover(effective, issue, input.names, records);
   });
-  emit({ status: 'resolved', workspace: workspace?.file ?? null, issues });
+  emit({ status: 'resolved', workspace: workspace?.file ?? null, records: { ...records }, issues });
   return 0;
 }
 
@@ -694,7 +725,7 @@ function pathCommand(args, displayName, effective, sources, workspace) {
 }
 
 function transitionCommand(args, repository, raw, override) {
-  const resolve = resolver(raw, override);
+  const resolve = resolver(raw, override, null, { layout: false });
   const sync = resolve(repository).effective.projectSync;
   if (!sync.enabled) {
     emit({ status: 'disabled', updates: [], boards: [], unresolved: [] });
@@ -804,7 +835,7 @@ function main() {
   const workspace = findWorkspace(args.checkout ?? (command === 'config' ? currentCheckout(repository) : null));
   if (command === 'branches' || command === 'path') {
     const { effective, sources } = resolver(raw, override, workspace)(repository);
-    if (command === 'branches') return branchesCommand(effective, workspace);
+    if (command === 'branches') return branchesCommand(effective, workspace, args.checkout);
     return pathCommand(args, displayName, effective, sources, workspace);
   }
   if (own(args, 'issue')) args.issue = positiveInteger(args.issue);

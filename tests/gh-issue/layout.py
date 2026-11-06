@@ -96,18 +96,8 @@ if args[:2] == ['api', 'graphql']:
     query = value('query') or ''
     mode = Path(query.lstrip('@')).stem
     log()
-    if mode == 'branch-links':
-        search = value('search')
-        name = re.search(r'repo:(\S+)', search).group(1)
-        text = re.search(r'"([^"]*)"', search).group(1).lower()
-        nodes = [{'number': int(number), 'state': issue['state'], 'repository': {'nameWithOwner': name},
-                  'linkedBranches': linked(name, issue)}
-                 for number, issue in repository(name)['issues'].items()
-                 if issue['state'] == 'OPEN' and text in issue['title'].lower()]
-        print(json.dumps({'data': {'search': {'issueCount': len(nodes), 'nodes': nodes}}}))
-    else:
-        name = value('owner') + '/' + value('name')
-        print(json.dumps(issue_payload(mode, name, int(value('number')))))
+    name = value('owner') + '/' + value('name')
+    print(json.dumps(issue_payload(mode, name, int(value('number')))))
 elif args[:2] == ['api', 'user']:
     print('test-user')
 elif args[:2] == ['issue', 'edit']:
@@ -187,6 +177,16 @@ class Layout(unittest.TestCase):
             str(number): {'state': 'OPEN', 'linked': [], 'parent': None, **issue} for number, issue in issues.items()}}
         self.state.write_text(json.dumps(state))
         return primary
+
+    def edit_issue(self, name, number, **changes):
+        state = json.loads(self.state.read_text())
+        state['repositories'][name]['issues'][str(number)].update(changes)
+        self.state.write_text(json.dumps(state))
+
+    def record(self, primary, branch):
+        result = subprocess.run([self.env['REAL_GIT'], '-C', str(primary), 'config', 'branch.' + branch + '.gh-issue'],
+                                capture_output=True, text=True, env=self.env)
+        return result.stdout.strip()
 
     def write_workspace(self, settings):
         (self.workspace / '.gh-issue.json').write_text(json.dumps(settings))
@@ -287,18 +287,92 @@ class Layout(unittest.TestCase):
         self.assertEqual(self.field(output, 'Branch'), 'topic/export')
         self.assertEqual([call for call in self.call_log() if call[:2] == ['issue', 'develop']], [])
 
-    def test_start_refuses_a_branch_that_another_open_issue_links(self):
+    def test_start_refuses_a_branch_that_another_issue_owns(self):
         self.key_workspace()
         web = self.repository('example/app-web', self.workspace / 'web', {
             12: {'title': '[TICKET-42] Add export'}, 14: {'title': '[TICKET-42] Document export'}})
         self.run_script(web, 'start.sh', 'start', 'example/app-web', '12')
+        self.assertEqual(self.record(web, 'feat/ticket-42'), '12')
         before = self.mutations()
         result = self.run_script(web, 'start.sh', 'start', 'example/app-web', '14', code=2)
-        self.assertIn('feat/ticket-42 belongs to open issue #12', result.stderr)
+        self.assertIn('feat/ticket-42 belongs to issue #12 in this clone, not issue #14', result.stderr)
+        # An explicit choice gets the same answer.
+        result = self.run_script(web, 'start.sh', 'resume', '--branch', 'feat/ticket-42', 'example/app-web', '14', code=2)
+        self.assertIn('belongs to issue #12 in this clone', result.stderr)
         self.assertEqual(self.mutations(), before)
-        searches = [call for call in self.call_log() if any('branch-links.graphql' in part for part in call)]
-        self.assertEqual(len(searches), 1)
-        self.assertIn('search=repo:example/app-web is:issue is:open in:title "TICKET-42"', searches[0])
+        # The record does not depend on the title of the owner.
+        self.edit_issue('example/app-web', 12, title='Add export')
+        self.run_script(web, 'start.sh', 'start', 'example/app-web', '14', code=2)
+        self.assertEqual(self.mutations(), before)
+
+    def test_status_and_finish_ignore_a_branch_that_another_issue_owns(self):
+        self.key_workspace()
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            12: {'title': '[TICKET-42] Add export'}, 14: {'title': '[TICKET-42] Document export'}})
+        self.run_script(web, 'start.sh', 'start', 'example/app-web', '12')
+        output = self.run_script(web, 'status.sh', 'example/app-web', '14').stdout
+        self.assertEqual((self.field(output, 'Local worktrees'), self.field(output, 'Started')), ('none', 'no'))
+        result = self.run_script(web, 'finish.sh', '--dry-run', 'example/app-web', '14', code=2)
+        self.assertIn('no worktree matches issue #14', result.stderr)
+        result = self.run_script(web, 'finish.sh', '--dry-run', '--branch', 'feat/ticket-42', 'example/app-web', '14', code=2)
+        self.assertIn('belongs to issue #12 in this clone', result.stderr)
+        self.assertNotIn('close', result.stdout)
+
+    def test_constant_template_cannot_give_one_branch_to_two_issues(self):
+        self.write_workspace({'taskBranchTemplate': 'feat/shared'})
+        web = self.repository('example/app-web', self.workspace / 'web', {
+            21: {'title': 'First change'}, 22: {'title': 'Unrelated change'}})
+        self.run_script(web, 'start.sh', 'start', 'example/app-web', '21')
+        before = self.mutations()
+        result = self.run_script(web, 'start.sh', 'resume', 'example/app-web', '22', code=2)
+        self.assertIn('feat/shared belongs to issue #21 in this clone', result.stderr)
+        self.assertEqual(self.mutations(), before)
+
+    def test_shared_name_without_link_or_record_needs_an_answer(self):
+        # Another clone created the branch, so this clone has no record of its issue.
+        self.key_workspace()
+        web = self.repository('example/app-web', self.workspace / 'web', {12: {'title': '[TICKET-42] Add export'}})
+        self.git(web, 'push', '-q', 'origin', 'main:refs/heads/feat/ticket-42')
+        self.git(web, 'fetch', '-q', 'origin')
+        answer = json.loads(self.run_script(web, 'start.sh', 'start', 'example/app-web', '12', code=2).stdout)
+        self.assertEqual((answer['field'], answer['candidates']), ('branch', ['feat/ticket-42']))
+        self.assertIn('Another open issue can own it', answer['question'])
+        self.assertEqual(self.mutations(), [])
+        output = self.run_script(web, 'status.sh', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Started'), 'no')
+        # An explicit answer records the branch, and later commands accept it.
+        output = self.run_script(web, 'start.sh', 'resume', '--branch', 'feat/ticket-42', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Status'), 'resumed')
+        self.assertEqual(self.record(web, 'feat/ticket-42'), '12')
+        output = self.run_script(web, 'status.sh', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Started'), 'yes')
+        output = self.run_script(web, 'finish.sh', '--dry-run', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Branch'), 'feat/ticket-42')
+
+    def test_finish_branch_must_be_an_issue_branch_when_one_exists(self):
+        primary = self.repository('example/plain', self.home / 'code/plain', {
+            5: {'title': 'First task'}, 6: {'title': 'Second task'}})
+        self.run_script(primary, 'start.sh', 'start', 'example/plain', '5')
+        self.run_script(primary, 'start.sh', 'start', 'example/plain', '6')
+        # A branch recorded for another issue is refused.
+        result = self.run_script(primary, 'finish.sh', '--dry-run', '--branch', 'feat/issue-6-second-task',
+                                 'example/plain', '5', code=2)
+        self.assertIn('belongs to issue #6 in this clone, not issue #5', result.stderr)
+        # A branch with no record cannot replace the linked branch of the issue.
+        self.git(primary, 'worktree', 'add', '-q', '-b', 'topic/other', str(self.root / 'other'), 'main')
+        answer = json.loads(self.run_script(primary, 'finish.sh', '--dry-run', '--branch', 'topic/other',
+                                            'example/plain', '5', code=2).stdout)
+        self.assertEqual((answer['field'], answer['candidates']), ('branch', ['feat/issue-5-first-task']))
+
+    def test_board_transitions_accept_a_layout_split_across_files(self):
+        # The local file uses {key}, and only the workspace file defines branchKey.
+        self.config.write_text(json.dumps({'projectSync': {'enabled': False},
+                                           'repositories': {'example/app-web': {'taskBranchTemplate': 'feat/{key}'}}}))
+        self.write_workspace({'branchKey': {'from': 'titlePrefix', 'pattern': KEY_PATTERN}})
+        web = self.repository('example/app-web', self.workspace / 'web', {12: {'title': '[TICKET-42] Add export'}})
+        self.run_script(web, 'project-start.sh', '--dry-run', 'example/app-web', '12')
+        output = self.run_script(web, 'start.sh', 'start', 'example/app-web', '12').stdout
+        self.assertEqual(self.field(output, 'Branch'), 'feat/ticket-42')
 
     def test_start_refuses_a_destination_that_holds_another_branch(self):
         self.config.write_text(json.dumps({'projectSync': {'enabled': False}, 'worktreeRoot': str(self.root / 'wt'),
@@ -334,6 +408,7 @@ class Layout(unittest.TestCase):
 
     def test_key_is_the_lowercase_capture(self):
         self.key_workspace()
+        self.repository('example/app-web', self.workspace / 'web', {})
         request = {'names': [], 'issues': [{'number': 42, 'title': '[TICKET-42] Add export', 'compound': False, 'linked': []}]}
         result = subprocess.run([str(SCRIPTS / 'branch-discovery.sh'), 'example/app-web',
                                  '--checkout=' + str(self.workspace / 'web')], input=json.dumps(request),
@@ -405,19 +480,24 @@ class Layout(unittest.TestCase):
             3: {'title': 'Fix timeout'}, 12: {'title': 'Retry 3 times'}})
         worktree = self.root / 'issue-12'
         self.git(primary, 'worktree', 'add', '-q', '-b', 'feat/issue-12-retry-3-times', str(worktree), 'main')
-        output = self.run_script(primary, 'start.sh', 'resume', 'example/plain', '12').stdout
-        self.assertEqual(self.field(output, 'Branch'), 'feat/issue-12-retry-3-times')
-        output = self.run_script(primary, 'status.sh', 'example/plain', '12').stdout
-        self.assertIn('[feat/issue-12-retry-3-times]', self.field(output, 'Local worktrees'))
-        output = self.run_script(primary, 'finish.sh', '--dry-run', 'example/plain', '12').stdout
-        self.assertEqual(self.field(output, 'Branch'), 'feat/issue-12-retry-3-times')
-        # For issue #3 the branch is only a possible branch: never a match.
+        # Without a record, the branch is only a possible branch of issue #3: never a match.
         answer = json.loads(self.run_script(primary, 'start.sh', 'start', 'example/plain', '3', code=2).stdout)
         self.assertEqual(answer['candidates'], ['feat/issue-12-retry-3-times', 'feat/issue-3-fix-timeout'])
         output = self.run_script(primary, 'status.sh', 'example/plain', '3').stdout
         self.assertEqual((self.field(output, 'Local worktrees'), self.field(output, 'Started')), ('none', 'no'))
         answer = json.loads(self.run_script(primary, 'finish.sh', '--dry-run', 'example/plain', '3', code=2).stdout)
         self.assertEqual((answer['field'], answer['candidates']), ('branch', ['feat/issue-12-retry-3-times']))
+        # For issue #12 the branch matches in every command.
+        output = self.run_script(primary, 'start.sh', 'resume', 'example/plain', '12').stdout
+        self.assertEqual(self.field(output, 'Branch'), 'feat/issue-12-retry-3-times')
+        output = self.run_script(primary, 'status.sh', 'example/plain', '12').stdout
+        self.assertIn('[feat/issue-12-retry-3-times]', self.field(output, 'Local worktrees'))
+        output = self.run_script(primary, 'finish.sh', '--dry-run', 'example/plain', '12').stdout
+        self.assertEqual(self.field(output, 'Branch'), 'feat/issue-12-retry-3-times')
+        # After start records #12, issue #3 no longer sees the branch at all.
+        self.assertEqual(self.record(primary, 'feat/issue-12-retry-3-times'), '12')
+        result = self.run_script(primary, 'finish.sh', '--dry-run', 'example/plain', '3', code=2)
+        self.assertIn('no worktree matches issue #3', result.stderr)
         self.assertEqual(self.mutations(), [call for call in self.mutations() if call[2] == '12'])
 
     def test_possible_branch_needs_input_then_either_answer_works(self):

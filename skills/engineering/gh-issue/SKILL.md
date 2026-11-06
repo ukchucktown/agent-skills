@@ -286,7 +286,12 @@ same command once with the matching option:
 
 A `branch` question can list possible branches and one new branch name. A
 possible branch contains the issue number but does not fit the branch template.
-When `--branch` names a branch that does not exist, start creates that branch.
+A `branch` question can also show an unverified branch: an existing shared name
+that no link or local branch record ties to the issue. Another issue can own an
+unverified branch, so choose it only when the user confirms that it belongs to
+this issue. When `--branch` names a branch that does not exist, start creates
+that branch. Start refuses a branch that the local record gives to another
+issue.
 A `branch` or `destination` question with no candidates asks the user for a
 name, because the issue title has no effort key.
 
@@ -324,7 +329,8 @@ the config workflow above. Relay other completed or blocked results and stop.
 If the command cannot resolve a parent base, ask one question and rerun it with
 the reported `--base BRANCH` option. A `needs_input` result for `branch` lists
 the worktree branches that finish can use. Ask its exact question, then rerun
-finish once with `--branch BRANCH`.
+finish once with `--branch BRANCH`. Finish refuses a branch that the local
+record gives to another issue.
 
 When the command reports changed paths, use its worktree, branch, base, and
 pull-request values for the rest of finish. Do not repeat its inspection.

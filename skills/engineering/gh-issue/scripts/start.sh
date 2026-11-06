@@ -82,33 +82,36 @@ ask_missing_key() {
   needs_input branch "$missing_intro Which branch should issue #$number use? Name a new branch to create one."
 }
 
-# A rendered name without {number} can be shared. Refuse one that another open issue links.
-verify_links() {
-  link_number=$1
-  link_branch=$2
-  link_text=$(printf '%s' "$3" | tr -d '"')
-  [ -n "$link_text" ] || return 0
-  links_file=$temporary_directory/links-$link_number
-  if ! gh api graphql -F "query=@$script_directory/../references/branch-links.graphql" \
-    -f "search=repo:$canonical_repository is:issue is:open in:title \"$link_text\"" >"$links_file"; then
-    echo "start.sh: cannot read the issues that link branch $link_branch" >&2
+# Start records the issue of each branch it creates or attaches in this clone.
+# A branch recorded for another issue never becomes the branch of this issue.
+refuse_recorded() {
+  recorded_issue=$(jq -r --arg branch "$2" '.records[$branch] // empty' "$discovery_file")
+  if [ -n "$recorded_issue" ] && [ "$recorded_issue" != "$1" ]; then
+    echo "start.sh: branch $2 belongs to issue #$recorded_issue in this clone, not issue #$1. Name another branch with --branch." >&2
     exit 2
   fi
-  jq -e '.data.search.issueCount == (.data.search.nodes | length) and
-    all(.data.search.nodes[]; .linkedBranches.totalCount == (.linkedBranches.nodes | length))' "$links_file" >/dev/null || {
-    echo "start.sh: GitHub returned incomplete results for the issues that link branch $link_branch" >&2
-    exit 2
-  }
-  link_conflicts=$(jq -r --argjson number "$link_number" --arg branch "$link_branch" --arg repository "$canonical_repository" '
-    def same: ascii_downcase == ($repository | ascii_downcase);
-    [.data.search.nodes[] |
-      select(.number != $number and .state == "OPEN" and (.repository.nameWithOwner | same)) |
-      select(any(.linkedBranches.nodes[]; .ref.name == $branch and (.ref.repository.nameWithOwner | same))) |
-      "#\(.number)"] | join(", ")' "$links_file")
-  [ -z "$link_conflicts" ] || {
-    echo "start.sh: branch $link_branch belongs to open issue $link_conflicts, not issue #$link_number" >&2
-    exit 2
-  }
+}
+
+record_branch() {
+  git -C "$primary" config "branch.$2.gh-issue" "$1"
+}
+
+# Refuse a rendered name that belongs to another issue, and ask before start
+# uses an existing shared name that no link or record ties to the issue.
+check_rendered() {
+  rendered_number=$1
+  rendered_name=$(discovered "$rendered_number" '.rendered // empty')
+  if [ -n "$rendered_name" ]; then
+    refuse_recorded "$rendered_number" "$rendered_name"
+  fi
+  unverified_file=$temporary_directory/unverified-$rendered_number
+  discovered "$rendered_number" '.unverified[]' >"$unverified_file"
+  [ -s "$unverified_file" ] || return 0
+  unverified_intro="Branch $(sed -n '1p' "$unverified_file") exists, but issue #$rendered_number has no link to it and this clone has no record of its issue. Another open issue can own it."
+  if [ "$rendered_number" -ne "$number" ]; then
+    needs_input base "$unverified_intro Which existing branch should provide the base for issue #$number?" "$unverified_file"
+  fi
+  needs_input branch "$unverified_intro Which branch should issue #$number use? Choose it only when it belongs to this issue, or name a new branch." "$unverified_file"
 }
 
 # Print the branch of the checkout whose top level is the given path.
@@ -348,6 +351,7 @@ if [ -n "$selected_branch" ]; then
   if [ "$focused_candidate_count" -gt 0 ] && ! grep -Fx -- "$selected_branch" "$focused_candidates" >/dev/null; then
     needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
   fi
+  refuse_recorded "$number" "$selected_branch"
   if branch_known "$selected_branch"; then
     focused_branch=$selected_branch
   else
@@ -357,10 +361,10 @@ if [ -n "$selected_branch" ]; then
   fi
 elif [ "$focused_candidate_count" -eq 1 ]; then
   focused_branch=$(sed -n '1p' "$focused_candidates")
-  verify_links "$number" "$focused_branch" "$(discovered "$number" '.linkSearch // empty')"
 elif [ "$focused_candidate_count" -gt 1 ]; then
   needs_input branch "Which existing branch should issue #$number use?" "$focused_candidates"
 else
+  check_rendered "$number"
   ask_possible "$number"
   ask_missing_key "$number"
   planned_branch=$(discovered "$number" '.rendered')
@@ -425,6 +429,7 @@ if [ -n "$existing_worktree" ]; then
   fi
   apply_projects
   assign_issue
+  record_branch "$number" "$focused_branch"
   printf 'Assignees: %s\n' "$assignment"
   printf 'Status: existing_worktree\n'
   printf 'Repository: %s\n' "$canonical_repository"
@@ -438,6 +443,7 @@ fi
 
 if [ -n "$focused_branch" ] && [ "$mode" = "start" ]; then
   assign_issue
+  record_branch "$number" "$focused_branch"
   printf 'Assignees: %s\n' "$assignment"
   printf 'Status: already_started\n'
   printf 'Repository: %s\n' "$canonical_repository"
@@ -482,10 +488,10 @@ if [ -z "$focused_branch" ]; then
       fi
     elif [ "$item_candidate_count" -eq 1 ]; then
       item_branch=$(sed -n '1p' "$item_candidates")
-      verify_links "$item_number" "$item_branch" "$(discovered "$item_number" '.linkSearch // empty')"
     elif [ "$item_candidate_count" -gt 1 ]; then
       needs_input base "Which existing branch should provide the base for issue #$number?" "$item_candidates"
     else
+      check_rendered "$item_number"
       ask_possible "$item_number"
       ask_missing_key "$item_number"
       item_branch=$(discovered "$item_number" '.rendered')
@@ -515,6 +521,7 @@ fi
 while IFS="$(printf '\t')" read -r item_number item_branch item_base; do
   [ -n "$item_number" ] || continue
   gh issue develop "$item_number" --repo "$canonical_repository" --base "$item_base" --name "$item_branch" >/dev/null
+  record_branch "$item_number" "$item_branch"
 done <"$creation_plan"
 
 if [ -s "$creation_plan" ] || ! branch_exists_locally "$focused_branch"; then
@@ -544,6 +551,7 @@ checked_out_branch=$(git -C "$destination" branch --show-current 2>/dev/null || 
 }
 
 assign_issue
+record_branch "$number" "$focused_branch"
 apply_projects
 if [ "$mode" = "resume" ]; then result=resumed; else result=started; fi
 printf 'Status: %s\n' "$result"

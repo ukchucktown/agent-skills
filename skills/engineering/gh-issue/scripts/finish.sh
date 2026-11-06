@@ -177,7 +177,8 @@ issue_input=$(printf '%s' "$finish_json" | jq -c --arg repository "$canonical_re
 cut -f2 "$worktree_rows" >"$temporary_directory/worktree-names"
 discovery=$(discover "$issue_input" "$temporary_directory/worktree-names")
 rows_on "$(printf '%s' "$discovery" | jq -c '.matches')" >"$matches_file"
-rows_on "$(printf '%s' "$discovery" | jq -c '.possible')" >"$possible_file"
+# A worktree on a possible branch or on an unverified shared name needs an answer.
+rows_on "$(printf '%s' "$discovery" | jq -c '.possible + .unverified')" >"$possible_file"
 
 match_count=$(wc -l <"$matches_file" | tr -d ' ')
 current_root=$(git rev-parse --show-toplevel)
@@ -185,6 +186,16 @@ current_branch=$(git branch --show-current)
 
 selected=
 if [ -n "$selected_branch" ]; then
+  # An explicit branch follows the same ownership rule as start.
+  recorded_issue=$(jq -r --arg branch "$selected_branch" '.records[$branch] // empty' "$temporary_directory/discovery")
+  if [ -n "$recorded_issue" ] && [ "$recorded_issue" != "$number" ]; then
+    echo "finish.sh: branch $selected_branch belongs to issue #$recorded_issue in this clone, not issue #$number" >&2
+    exit 2
+  fi
+  if [ "$match_count" -gt 0 ] && ! cut -f2 "$matches_file" | grep -Fx -- "$selected_branch" >/dev/null; then
+    cut -f2 "$matches_file" >"$temporary_directory/candidates"
+    needs_input branch "Issue #$number already has a matching worktree branch. Which of these branches should finish use?" "$temporary_directory/candidates"
+  fi
   selected=$(awk -F '\t' -v branch="$selected_branch" '$2 == branch { print; exit }' "$worktree_rows")
   [ -n "$selected" ] || {
     echo "finish.sh: no worktree holds branch $selected_branch" >&2
@@ -206,7 +217,7 @@ if [ -z "$selected" ]; then
   if [ -s "$possible_file" ]; then
     # A branch that only contains the issue number never counts as a match.
     cut -f2 "$possible_file" >"$temporary_directory/candidates"
-    needs_input branch "No worktree holds a branch linked to issue #$number or a branch that fits $(printf '%s' "$discovery" | jq -r '.template'). These worktree branches contain the issue number: $(paste -sd ',' "$temporary_directory/candidates" | sed 's/,/, /g'). Which branch should finish use?" "$temporary_directory/candidates"
+    needs_input branch "No worktree holds a branch linked to issue #$number or a branch that fits $(printf '%s' "$discovery" | jq -r '.template') and belongs to the issue. These worktree branches can belong to issue #$number: $(paste -sd ',' "$temporary_directory/candidates" | sed 's/,/, /g'). Which branch should finish use?" "$temporary_directory/candidates"
   fi
   echo "finish.sh: no worktree matches issue #$number" >&2
   exit 2

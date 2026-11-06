@@ -252,6 +252,8 @@ belong to an issue:
    matches when it fits the effective branch template with the issue number in
    the `{number}` position. The other variables match any text. For a template
    without `{number}`, only the rendered branch name matches.
+3. A name match never counts when the branch record names another issue. The
+   [branch records](#branch-records) section describes the record.
 
 For the template `feat/issue-{number}-{slug}`, issue #3 matches
 `feat/issue-3-fix-timeout`. Issue #3 does not match
@@ -273,13 +275,36 @@ Explicit branch options override resolved settings. Existing issue branches take
 precedence over templates. A `--branch` value that does not exist names a new
 branch, and start creates that branch.
 
-### Shared branch names
+### Branch records
 
-A branch from a template without `{number}` can belong to another issue. Before
-start uses such a branch, start reads the open issues in the repository whose
-titles contain the effort key. For a template without `{key}`, start uses the
-title words. Start refuses the branch when another open issue links it. Start
-also refuses a destination that holds a worktree on a different branch.
+GitHub cannot list the issues that link a given branch. Only a full read of the
+open issues could prove that no other issue links a branch. Thus, the skill
+keeps a local record instead. When start creates or attaches a branch, start
+writes the issue number into the Git configuration of the clone, for example
+`branch.feat/ticket-42.gh-issue = 12`. Git deletes the record when it deletes
+the local branch.
+
+Every command reads the record:
+
+- A name match or a possible branch whose record names another issue does not
+  belong to the issue.
+- Start and finish refuse an explicit `--branch` value whose record names
+  another issue.
+- A rendered name from a template without `{number}` belongs to the issue only
+  through a link or a record of that issue, because other issues can render the
+  same name. Without a link or a record, the branch is unverified.
+  Start asks before it uses an unverified branch. Finish asks before it selects
+  one. Status does not count it as started work. Clean and cancel keep it.
+
+The record covers only the clone that started the work. A branch that another
+clone or another person started has no record here. For such a branch, start
+asks the question for an unverified branch and does not refuse it. Start also
+refuses a destination that holds a worktree on a different branch.
+
+When branches already belong to the issue, `finish --branch` must name one of
+them.
+
+### Clean coverage
 
 Clean with an issue number reads only that issue and the issues whose numbers
 appear in branch names. A branch name without an issue number thus enters the

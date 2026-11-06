@@ -425,8 +425,9 @@ else
 fi
 
 # The shared rule decides which branches belong to each issue. Start, status,
-# and finish use the same rule. A branch that only contains an issue number is
-# a possible branch, which the plan preserves.
+# and finish use the same rule. The plan preserves a possible branch, which only
+# contains an issue number, and a shared name that no link or record ties to
+# its issue.
 discovery_file=$temporary_directory/discovery.json
 if ! jq -c --rawfile names "$all_branches" '
   {names: ($names | split("\n") | map(select(length > 0))),
@@ -452,7 +453,8 @@ possible_branches=$temporary_directory/possible-branches
 jq -r --slurpfile discovery "$discovery_file" '
   .[] | select((.scope // "in") != "out") | . as $issue |
   ($discovery[0].issues[] | select(.number == $issue.number)) as $found |
-  $found.possible[] | [., "name contains #\($issue.number) but does not fit \($found.template)"] | @tsv
+  ($found.possible[] | [., "name contains #\($issue.number) but does not fit \($found.template)"]),
+  ($found.unverified[] | [., "no link or branch record ties it to #\($issue.number)"]) | @tsv
 ' "$issues_file" | awk -F '\t' 'FILENAME == ARGV[1] { keep[$0] = 1; next } ($1 in keep)' "$all_branches" - |
   awk -F '\t' 'FILENAME == ARGV[1] { member[$0] = 1; next } !($1 in member) && !seen[$1]++' "$candidate_branches" - \
   >"$possible_branches"

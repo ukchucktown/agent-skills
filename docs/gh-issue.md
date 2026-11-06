@@ -137,9 +137,13 @@ of a new branch. If you name a branch that does not exist, start creates it. Sta
 also asks for a branch name when a template uses the effort key and the issue
 title has no key.
 
-Start refuses a shared branch name that GitHub links to another open issue in
-the same repository. Start also refuses a destination that holds a worktree on
-a different branch.
+Start records the issue of each branch that it creates or attaches in the Git
+configuration of the clone. Start, status, finish, clean, and cancel never give
+a branch to an issue when the record names another issue. Start refuses such a
+branch, also when you name it with `--branch`. Two issues with the same effort
+key thus cannot share one branch in one repository. A shared branch name that
+no link or record ties to the issue needs your answer before start uses it.
+Start also refuses a destination that holds a worktree on a different branch.
 
 Start preserves existing assignees and reports their names. Before branch
 creation, start checks whether each ancestor branch lacks commits from its
@@ -176,7 +180,8 @@ with `Closes #75`.
 Finish finds the issue worktree with the same branch rule as start. If only
 worktrees on branches that contain the issue number exist, finish asks which
 branch to use. Finish does not select one of those worktrees without your
-answer.
+answer. Finish refuses a branch that the record of the clone gives to another
+issue.
 
 Finish accepts uncommitted work and reports it separately from committed paths.
 The report includes staged changes, unstaged changes, and untracked files. The
