@@ -18,8 +18,8 @@ Use this when someone asks you to check text that already exists.
    ```
 
    Add `--soft` for the advisory checks. Add `--profile procedural` when the
-   whole file is a procedure. The linter finds the mechanical violations. It
-   does not find every one, and it does not judge meaning.
+   whole file is a procedure. The linter finds the mechanical violations, but
+   it does not find every one, and it does not judge meaning.
 
 4. **Read the text yourself** for what the linter cannot see:
 
@@ -31,6 +31,10 @@ Use this when someone asks you to check text that already exists.
    - A term that changes halfway through the document (H16).
    - A paragraph with two topics (S3).
    - A pronoun that could point at two things (S10).
+   - Sentences that state related facts and have no connecting word (S6).
+     The linter finds only the mechanical patterns of S14.
+   - The AI tells in `ai-tells.md`. The linter finds some occurrences of T1,
+     T3, T6, T8, and T11. You find the others.
    - List punctuation: a comma or a semicolon at the end of an item (H13).
 
 5. **Discard the false positives.** Check every finding against the anti-goals
@@ -41,6 +45,10 @@ Use this when someone asks you to check text that already exists.
 
 7. **Ask before you rewrite.** Never rewrite someone's prose without their
    agreement. Offer the rewrite, or offer to fix one class of finding.
+
+8. **Rewrite with fidelity.** When the person agrees, follow the procedure in
+   `fidelity.md`. Tell the person about each fact that you could not keep and
+   each statement that was not clear.
 
 ## Report format
 
@@ -57,7 +65,9 @@ Hard (must fix)
 Soft (advice)
   docs/upgrade.md:9    S1  38 words, two ideas
   docs/upgrade.md:26   S4  "utilize" -> "use"
+  docs/upgrade.md:40   S14 4 short sentences in a row -> join the related facts
   docs/upgrade.md:52   S3  paragraph has 9 sentences
+  docs/upgrade.md:60   T1  "not only ... but" -> state the positive claim
 
 12 hard, 7 soft. Fix the hard findings?
 ```

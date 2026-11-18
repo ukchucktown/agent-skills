@@ -14,10 +14,16 @@ these rules are guidance and never block a change.
 
 ## H1 - Do not use semicolons (8.1)
 
-A semicolon joins two sentences that must be separate. Write two sentences.
+A semicolon hides the relation between two statements. Join the statements
+with a word that shows the relation. Write two sentences only when the
+statements are two separate claims.
 
 - No: The job runs nightly; it writes to the audit table.
-- Yes: The job runs nightly. The job writes to the audit table.
+- Yes: The job runs nightly and writes to the audit table.
+- No: The cache is cold after a deploy; the first requests are slow.
+- Yes: The cache is cold after a deploy, so the first requests are slow.
+- No: The gateway validates the token; the audit log has a 30-day retention.
+- Yes: The gateway validates the token. The audit log has a 30-day retention.
 
 ## H2 - Use the active voice (3.6)
 
@@ -193,10 +199,12 @@ Always state the consequence. A warning without a consequence is ignored.
 
 Do not use contractions. Do not drop the subject, the verb, or the article.
 
+Exception: the casual profile in `artifacts.md` permits contractions.
+
 - No: Can't reproduce. Fails on main.
 - Yes: I cannot reproduce this. The test fails on main.
 - No: If set, the flag disables retries.
-- Yes: If the flag is set, the flag disables retries.
+- Yes: If the flag is set, it disables retries.
 - No: Remove the lock and file.
 - Yes: Remove the lock and the file.
 
@@ -208,8 +216,9 @@ When a sentence carries several items or several actions, use a list.
 - Start each item with an uppercase letter.
 - Use an article before the noun that is the subject of each item.
 - Put a period at the end of an item only when the item is a full sentence.
+  When the items are not full sentences, no item has a period, and that
+  includes the last item.
 - Never put a comma or a semicolon at the end of an item.
-- Put a period at the end of the last item.
 - Make sure that each item connects to the text before the colon.
 - Do not mix instructions and descriptions in one list.
 - Do not nest a list inside a list. Use parentheses, or a second list at the
@@ -274,8 +283,12 @@ the reader ask whether you mean a different thing.
 
 - No: The job writes to the audit table. The task retries on failure. The
   worker then commits.
-- Yes: The job writes to the audit table. The job retries on failure. The job
-  then commits.
+- Yes: The job writes to the audit table and retries on failure. Then it
+  commits.
+
+This rule governs the term, not the pronoun. After you name a thing, "it" or
+"they" is correct when only one thing can be the antecedent (S10). A noun that
+starts every sentence makes a paragraph read as a list.
 
 The same applies to the wording of repeated actions. When two steps do the same
 kind of thing, word them the same way.

@@ -12,7 +12,12 @@ Usage:
     python3 lint.py FILE [FILE ...]
     python3 lint.py --soft FILE
     python3 lint.py --profile procedural FILE
+    python3 lint.py --profile casual FILE
     python3 lint.py --json FILE
+
+With --soft it also reports S14 (a row of short sentences, a row of long
+sentences, or a row of sentences with the same first two words) and some
+occurrences of the AI tells T1, T3, T6, T8, and T11.
 
 Exit code 1 when there is a hard finding, 0 otherwise.
 """
@@ -45,7 +50,10 @@ MASK_PATTERNS = [
     re.compile(r"\A---\n.*?\n---\n", re.S),        # yaml frontmatter
     # Lines that deliberately show what not to write.
     re.compile(r"^[ \t]*[-*]?[ \t]*(?:No|Non-STE|Not|Weak|Too long|Too dense|"
-               r"Instead of|Do not write|Incorrect|Wrong|Before|Bad)[ \t]*:.*$",
+               r"Too sparse|"
+               r"Instead of|Do not write|Incorrect|Wrong|Before|Bad)[ \t]*:.*"
+               # ... and the indented lines that continue a wrapped example.
+               r"(?:\n[ \t]+(?![-*+][ \t]|\(?\d+[.)][ \t])\S.*)*$",
                re.M),
     # Any line that maps one form to another is a mapping, not prose.
     re.compile(r"^.*(?:->|→).*$", re.M),
@@ -212,7 +220,8 @@ CAPS_RUN = re.compile(
 CAPS_SIGNAL = re.compile(r"\b(?:WARNING|CAUTION|NOTE|DANGER|IMPORTANT)\s*:")
 
 HARD_SIMPLE = [
-    ("H1", re.compile(r";"), "semicolon", "write two sentences"),
+    ("H1", re.compile(r";"), "semicolon",
+     "join with a connecting word, or write two sentences"),
     ("H12", CONTRACTIONS, "contraction", "write the words in full"),
     ("H18", GENDERED, "gendered pronoun", 'use "they", or name the role'),
     ("H17", CAPS_SIGNAL, "uppercase signal word", 'write "Warning:" or "Caution:"'),
@@ -312,6 +321,47 @@ MISSING_THAT = re.compile(
     re.I,
 )
 
+# S14. A sentence with this many words or fewer is short. This many short
+# sentences in a row, or this many sentences in a row with the same first two
+# words, is a signal to join sentences.
+SHORT_WORDS = 8
+LONG_WORDS = 20     # a sentence with more words than this is long
+RUN_LENGTH = 3
+
+# AI tells. Each entry: (rule, regex, message, fix). The linter finds only the
+# fixed phrases. Read the text for the other tells.
+TELLS = [
+    ("T1", re.compile(r"\bnot\s+(?:just|only|merely|simply)\b[^.!?\n]{0,80}?"
+                      r"(?:\bbut\b|,\s*(?:it|this|that)\s+is\b)", re.I),
+     "contrast with a claim that nobody made",
+     "state the positive claim"),
+    ("T3", re.compile(
+        r"\bit\s+is\s+(?:important|worth)\s+(?:to\s+note|noting|to\s+mention)\b"
+        r"|\bhere\s+is\s+what\s+you\s+need\s+to\s+know\b"
+        r"|\bthe\s+key\s+(?:insight|takeaway)\s+is\b"
+        r"|\bat\s+its\s+core\b", re.I),
+     "run-up before the point", "start with the point"),
+    ("T6", re.compile(r"\s[—–]\s|\w—\w|\s--\s"),
+     "dash as a connecting word",
+     "use a connecting word, a colon, parentheses, or a period"),
+    ("T8", re.compile(
+        r"\b(?:delv(?:e|es|ed)|robust|seamless(?:ly)?|crucial|pivotal|"
+        r"showcas(?:e|es|ed)|underscor(?:e|es|ed)|comprehensive|tapestry|"
+        r"testament|meticulous(?:ly)?)\b", re.I),
+     "stock word", "use the plain word, or state the measured property"),
+    ("T11", re.compile(
+        r"\bgreat\s+question\b|\bI\s+hope\s+this\s+helps\b"
+        r"|\blet\s+me\s+know\s+if\b|\bhappy\s+to\s+help\b"
+        r"|\bfeel\s+free\s+to\b", re.I),
+     "chat residue", "remove the wrapper and keep the content"),
+]
+
+
+def first_two(sentence):
+    words = WORD.findall(LIST_MARK.sub("", HEADING.sub("", sentence)))
+    return " ".join(w.lower() for w in words[:2]) if len(words) >= 2 else ""
+
+
 # --------------------------------------------------------------------------
 # Sentences and paragraphs
 # --------------------------------------------------------------------------
@@ -399,6 +449,8 @@ def check_file(path, profile, want_soft):
         })
 
     for rule, pat, what, fix in HARD_SIMPLE:
+        if pat is CONTRACTIONS and profile == "casual":
+            continue    # the casual profile permits contractions
         for m in pat.finditer(masked):
             add(hard, rule, m.start(), "%s: %s" % (what, m.group(0).strip()[:40]), fix)
 
@@ -433,10 +485,56 @@ def check_file(path, profile, want_soft):
         for para_offset, para in paragraphs(masked):
             in_list = False
             count = 0
+            short_run = []      # offsets of consecutive short sentences
+            same_run = []       # offsets of consecutive same-opening sentences
+            same_key = ""
+
+            def flush_short():
+                if len(short_run) >= RUN_LENGTH:
+                    add(soft, "S14", short_run[0],
+                        "%d short sentences in a row" % len(short_run),
+                        "join the related facts with a connecting word")
+                del short_run[:]
+
+            long_run = []       # offsets of consecutive long sentences
+
+            def flush_long():
+                if len(long_run) >= RUN_LENGTH:
+                    add(soft, "S14", long_run[0],
+                        "%d long sentences in a row" % len(long_run),
+                        "end one sentence earlier, at a separate claim")
+                del long_run[:]
+
+            def flush_same():
+                if len(same_run) >= RUN_LENGTH:
+                    add(soft, "S14", same_run[0],
+                        '%d sentences in a row start with "%s"'
+                        % (len(same_run), same_key),
+                        "join sentences, or use a pronoun")
+                del same_run[:]
+
             for rel, sent, is_step in sentences(para):
                 offset = para_offset + rel
                 n = word_count(sent)
                 in_list = in_list or is_step
+                plain = (not is_step and not HEADING.match(sent)
+                         and not sent.rstrip().endswith(":"))
+                if plain and 0 < n <= SHORT_WORDS:
+                    short_run.append(offset)
+                else:
+                    flush_short()
+                if plain and n > LONG_WORDS:
+                    long_run.append(offset)
+                else:
+                    flush_long()
+                key = first_two(sent) if plain else ""
+                if key and key == same_key:
+                    same_run.append(offset)
+                else:
+                    flush_same()
+                    same_key = key
+                    if key:
+                        same_run.append(offset)
                 limit = 20 if (profile == "procedural" or is_step) else 25
                 if n > limit:
                     add(soft, "S1", offset, "%d words (target %d)" % (n, limit),
@@ -446,6 +544,14 @@ def check_file(path, profile, want_soft):
                     add(soft, "S3", offset,
                         "paragraph has more than six sentences",
                         "find the second topic and start a new paragraph")
+            flush_short()
+            flush_long()
+            flush_same()
+
+        for rule, pat, what, fix in TELLS:
+            for m in pat.finditer(masked):
+                add(soft, rule, m.start(),
+                    '%s: "%s"' % (what, " ".join(m.group(0).split())[:40]), fix)
 
         for m in WORD.finditer(masked):
             w = m.group(0).lower().strip(".,")
@@ -495,9 +601,10 @@ def main(argv=None):
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--soft", action="store_true",
                     help="also report the advisory checks")
-    ap.add_argument("--profile", choices=["descriptive", "procedural"],
+    ap.add_argument("--profile", choices=["descriptive", "procedural", "casual"],
                     default="descriptive",
-                    help="sentence-length target (default: descriptive, 25 words)")
+                    help="sentence-length target (default: descriptive, 25 words). "
+                         "The casual profile permits contractions")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args(argv)
 
