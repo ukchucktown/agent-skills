@@ -1,9 +1,10 @@
 # Profiles and artifact notes
 
-## The two profiles
+## The three profiles
 
 The source specification splits technical writing into two kinds and gives each
-its own rules. Decide which kind you are writing, then apply that profile.
+its own rules. The casual profile is ours. Decide which kind you are writing,
+then apply that profile.
 
 ### Procedural
 
@@ -30,7 +31,28 @@ release notes, PR descriptions, commit bodies.
 - About six sentences maximum in a paragraph (6.6).
 - Passive voice is permitted only when you do not know the agent (H2).
 
-Most documents contain both. A GitHub issue is descriptive, and its "Steps to
+### Casual
+
+Text that a person sends in their own voice to other people: a post, an
+announcement, an email, a message that someone asked you to draft. Use this
+profile only for such text, or when the person asks for a casual tone.
+
+- The descriptive rules apply, with these changes.
+- Contractions are permitted (the exception to H12).
+- Keep the voice of the writer. A greeting, a thank-you, an opinion, and a
+  small joke are content, not decoration. Plain text is not cold text.
+- A short sentence is normal here. Join sentences only when the connecting
+  word states a real relation (S2).
+- Remove the AI tells first (`ai-tells.md`). They are the usual reason that
+  such text sounds like a machine.
+- Keep every fact, every number, and every name (`fidelity.md`).
+
+This example is correct in the casual profile:
+
+"We broke the build on Friday. Sorry about that. The fix is in, and we've added
+a test so it can't happen again."
+
+Most technical documents contain both of the first two kinds. A GitHub issue is descriptive, and its "Steps to
 reproduce" section is procedural. Switch profiles at the section boundary. Do
 not mix the two kinds inside one list (4.3).
 
@@ -111,6 +133,16 @@ block a change.
 - A docstring or a public API comment is documentation. Apply the descriptive
   profile there.
 
+## Post, announcement, or email
+
+- Casual profile, unless the text is formal.
+- Start with the news or the request. The reader decides in one sentence
+  whether to continue.
+- A list of features keeps its content (F1). Remove an emoji that only
+  decorates (T10).
+- End on the last useful fact or on the request. Do not add a closer (T2).
+
 ## Slack, chat, and conversational replies
 
-Out of scope. Do not apply any of this. See the scope test in `SKILL.md`.
+Chat and conversational replies are out of scope, so do not apply any rule to
+them. See the scope test in `SKILL.md`.

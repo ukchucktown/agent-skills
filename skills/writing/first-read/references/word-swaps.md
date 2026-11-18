@@ -6,8 +6,8 @@ occur most often in software writing, and the plainer word to use instead.
 
 ## How to use this file
 
-1. Swap the word only when the plainer word keeps the meaning. When it does not,
-   keep your word. Rule 9.1 in the source makes the same point: a word-for-word
+1. Swap the word only when the plainer word keeps the meaning and the sentence
+   still reads as a person writes it (S4). When it does not, keep your word. Rule 9.1 in the source makes the same point: a word-for-word
    replacement is often not sufficient, and a different sentence is the answer.
 2. A swap is a soft target. Never report a missed swap as a violation.
 3. Read "Words to keep" first. It protects the vocabulary of this domain.

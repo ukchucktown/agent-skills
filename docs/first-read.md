@@ -65,9 +65,11 @@ skills/writing/first-read/
   NOTICE.md                provenance and the redistribution boundary
   references/
     hard-rules.md          18 mechanical rules, each with software examples
-    soft-targets.md        13 targets and the 8 anti-goals that keep them safe
+    soft-targets.md        14 targets and the 8 anti-goals that keep them safe
+    ai-tells.md            13 habits that a reader recognizes as machine writing
+    fidelity.md            6 rules that keep the facts when you rewrite
     word-swaps.md          about 230 swaps and the domain words to keep
-    artifacts.md           2 profiles and a note for each artifact type
+    artifacts.md           3 profiles and a note for each artifact type
     audit.md               the check procedure and the report format
   scripts/lint.py          checker for the mechanical rules
 tests/first-read/
@@ -138,8 +140,22 @@ We do not reproduce the text of any rule. The topic words above are ours. Read a
 copy of the specification for the wording.
 
 **Soft targets** need judgment: sentence length, paragraph shape, word choice,
-connecting words, pronoun clarity, American spelling. They are targets. Meaning
-always wins.
+connecting words, pronoun clarity, rhythm, American spelling. They are targets.
+Meaning always wins.
+
+One topic is a claim together with its reason, its condition, or its result,
+and those parts share a sentence. Two separate claims stay in two sentences.
+Target S14 treats a row of short sentences as a signal to join them and a row
+of long sentences as a signal to split one, so each pressure has a
+counterweight.
+
+**AI tells** (T1 to T13) are soft targets for the habits that a reader
+recognizes as machine writing, such as a contrast with a claim that nobody
+made, a closer that repeats, and a bold label on every list item.
+
+**Fidelity rules** (F1 to F6) apply when the agent rewrites text or writes from
+source material. They keep every fact, each degree of certainty, and each exact
+value, and they prohibit additions.
 
 Read the anti-goals in
 `skills/writing/first-read/references/soft-targets.md` before you apply a target.
@@ -151,7 +167,11 @@ sentence that holds one idea to reach a word count.
 
 Mechanical checks: H1, H3, H4, H5, H6, H7, H12, H17, H18. With `--soft`, it
 also reports sentence length, paragraph length, word swaps, Latin
-abbreviations, British spellings, and a missing conjunction "that".
+abbreviations, British spellings, and a missing conjunction "that". The same
+option reports S14 (a row of three or more sentences that each have eight words
+or fewer, that each have more than 20 words, or that start with the same two
+words) and the fixed phrases of the AI tells T1, T3, T6, T8, and T11. Use
+`--profile casual` for a post or an email, where contractions are permitted.
 
 It cannot check these, and it says so in every report:
 
@@ -159,6 +179,7 @@ It cannot check these, and it says so in every report:
   so the linter reports a bare passive as advice and you decide.
 - H10 a note that instructs, H11 a warning with no consequence, H13 list
   punctuation, H15 noun clusters, H16 a term that changes halfway through.
+- The fidelity rules, and the AI tells that have no fixed phrase.
 
 The linter never lints these spans: fenced code, indented code, inline code,
 URLs, markdown link targets, quoted text, table rows, YAML frontmatter, lines
@@ -171,9 +192,10 @@ keywords.
 |---|---|---|
 | Vocabulary | Guidance, not a closed dictionary | The source has 2195 approved words. Software writing needs "idempotent" and "backpressure". Rule 1.5 category 19 and rule 1.12 category 2 make our vocabulary legitimate, so `word-swaps.md` leads with a keep list |
 | Strictness | Two tiers, labelled per rule | A model given a hard 25-word limit fragments good sentences. The tier tells it which lever it pulls |
+| Flow | Linked facts share a sentence, and S14 reports a row of short sentences | When every rule that splits is hard and every rule that joins is soft, a model writes fragments. The examples now show joined sentences, and the linter measures both directions |
 | Source of truth | The skill, in plain markdown | The references use no Claude Code syntax, so other harnesses can read them |
 | Wording | Original, with rule numbers as citations | ASD owns the specification text. The rule numbers are freely citable and let anyone compare a rule with its source |
-| Profiles | Procedural and descriptive | The source splits itself the same way. A 20-word step and a 25-word explanation are different jobs |
+| Profiles | Procedural, descriptive, and casual | The source splits itself into the first two. A 20-word step and a 25-word explanation are different jobs. The casual profile is ours: a post or an email keeps the voice of its writer, and it permits contractions |
 | Name | Descriptive, not the trademark | "ASD-STE100" and "Simplified Technical English" are ASD trademarks |
 | Scope | Deliverables only | The scope test keeps the rules out of conversational replies and code |
 
@@ -202,9 +224,13 @@ The rules are adapted and the wording is original. A rule number such as
 `(3.5)` cites ASD-STE100 Issue 9 so that anyone can compare a rule with its
 source. The citations are references, not quotations.
 
+The fidelity rules and the AI tells adapt ideas from ste80-humanizer and from
+humanizer, which are MIT-licensed projects. The skill's `NOTICE.md` file gives
+the credits.
+
 This repository holds no part of that specification. The specification and any
 extraction of it live outside this repository because they belong to the
 Aerospace, Security and Defence Industries Association of Europe (ASD).
 
-This project is not an ASD product. ASD does not endorse it. Read the skill's
+This project is not an ASD product, and ASD does not endorse it. Read the skill's
 `NOTICE.md` file for the full statement.
