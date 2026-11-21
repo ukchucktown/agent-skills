@@ -17,7 +17,8 @@ authors and publishers and live outside this repository.
 
 ## How far each citation was checked
 
-- Wake, Jeffries, North, Lawrence and Green: read from the published web pages.
+- Wake, Jeffries, North, Lawrence and Green, Wynne: read from the published
+  web pages.
 - Lucassen and others (QUS): read from the published paper.
 - Cohn: the section headings of Chapters 2, 6, 7, and 14 are exact. The meaning
   attached to each heading comes from a secondhand summary of the book, and

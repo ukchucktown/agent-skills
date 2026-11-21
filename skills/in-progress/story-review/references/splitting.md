@@ -6,7 +6,8 @@ it gives. Leave the choice of slice and the new stories to the author.
 
 Unrelated capabilities joined in one story need no pattern: the next action is
 one story for each capability. An `estimable` finding uses "Break out a
-spike".
+spike" only when the unknown needs an investigation. An unknown that a person
+can decide needs that decision, not a spike.
 
 A good split gives slices that each work end to end and each deliver something
 a person can use. Prefer a split that lets the customer postpone or drop a

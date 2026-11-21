@@ -19,7 +19,13 @@ Never fill a gap with an invented rule, threshold, estimate, or priority.
 - **Story**: the statement, the acceptance criteria, and the notes. Retrieve
   the story with whatever the session has (an issue tracker tool, a file, pasted
   text). Follow links to acceptance criteria or constraints that you can open
-  before you call any detail absent.
+  before you call any detail absent. When the story points to a document in
+  place of its acceptance criteria or of a rule that the scope depends on, and
+  the document does not open, ask the person who requested the review for the
+  content or for access before you report. That person can often open a
+  document that you cannot. A citation that names the source of a rule that
+  the story states itself, such as "clinic policy (Patient Handbook, section
+  4)", is not such a document. Review the rule as the story states it.
 - **Horizon**: `next` (the story is a candidate for the next iteration) or
   `later` (the story stays on the backlog for now). Default: `next`. Use
   `later` only when the user or the story says so.
@@ -44,6 +50,11 @@ Do not compare stories with each other.
    - `deferred`: the criterion cannot apply yet. At horizon `later`, every
      criterion marked "next only" is deferred. A criterion entry can name one
      more case.
+   - `unverified`: the story points to a document for the answer and does
+     not state the answer itself, you could not open the document, and the
+     requester did not supply it. The limit is yours, not the story's. Never
+     turn it into a finding or a question for the author. When the story
+     states the content itself, judge that content.
    - `pass`: everything else.
 
    Honor each criterion's "Not a finding" guard before you raise a finding.
@@ -56,19 +67,26 @@ Do not compare stories with each other.
    item asks for something to be in the story and it is absent. Use `cannot
    tell from the text` when the item concerns a fact outside the story. Report
    these results in the "Team checklist" section, apart from the findings. A
-   `not met` item counts toward the verdict as material, unless the checklist
-   states its own severity.
+   `not met` item has the severity that the checklist states for it. When the
+   checklist states none, the item is material.
 
-4. **Decide the verdict.**
-   - `not ready`: one or more blocking findings.
-   - `needs work`: no blocking finding, and one or more material findings or
-     `not met` checklist items.
-   - `ready`: only minor findings, or none.
+4. **Decide the verdict** from the highest severity among the findings and the
+   `not met` checklist items.
+   - `not ready`: one or more are blocking.
+   - `needs work`: none is blocking, and one or more are material.
+   - `ready`: all are minor, or there are none.
 
-   Questions do not change the verdict. At horizon `later`, `ready` means
-   "acceptable on the backlog".
+   Questions and `unverified` results do not change the verdict. When a
+   criterion is `unverified`, the verdict covers only the text that you read,
+   and the result line says so. At horizon `later`, `ready` means "acceptable
+   on the backlog".
 
-5. **Report** in the format below.
+5. **Report** in the format below. Write the words of the report with the
+   `first-read` skill in Author mode, when the session has that skill. Apply
+   it to the sentence after the result, the findings, the "To resolve" lines,
+   and the questions. Keep the report headings as they are, and copy text
+   quoted from the story exactly. When the session does not have `first-read`,
+   use the wording rules under "Report format".
 
 ## Severity
 
@@ -82,8 +100,8 @@ Each criterion states its default severity and when to raise or lower it.
 
 ## Report format
 
-Write the report for the story's author, who does not know this skill. Use
-plain words. Name each criterion by its **Label** from
+Write the report for the story's author, who does not know this skill. Name
+each criterion by its **Label** from
 `references/criteria.md`, never by its heading. Use the three group headings
 below in place of the severity words. Leave the source citations out. When the
 user asks for the sources, add a "Basis:" line to each finding with the
@@ -93,7 +111,8 @@ sources from the criterion entry.
 Story review: <title or first words>
 Reviewed for: the next iteration | the backlog (later work)
 Result: Ready | Needs work | Not ready
-<One sentence that says why.>
+<One sentence that says why. With an unverified criterion, a second sentence
+that says which document the result does not cover.>
 
 Must fix before work starts
 1. <Label>: <what is wrong, one sentence>
@@ -110,19 +129,37 @@ Questions for the author
 - <question in plain words>
 
 Team checklist            (only when a checklist was supplied)
-- <item>: met | not met | cannot tell from the text
+- <item>: met | not met (must fix | should fix | optional) | cannot tell
+  from the text
+
+For you to check          (only when a criterion is unverified)
+- <document>: <labels of the checks that were not run on it>
 
 Checked, no problem found: <labels, comma-separated>
 Not checked: <labels with the reason, or "nothing">
-Could not read: <cited documents that you could not open, or "nothing">
 ```
 
 Blocking findings go under "Must fix before work starts", material findings
 under "Should fix", and minor findings under "Optional improvements". Leave
 out a group that has no findings. Number the findings in one sequence. The
-findings, the questions, the "no problem found" line, and the "not checked"
-line together account for all 15 criteria. At horizon `later`, a "Ready"
-result carries the words "acceptable on the backlog".
+findings, the questions, the "For you to check" section, the "no problem
+found" line, and the "not checked" line together account for all 15 criteria.
+At horizon `later`, a "Ready" result carries the words "acceptable on the
+backlog".
+
+"For you to check" is for the person who requested the review. It lists each
+document that the story points to and that you could not open, with the
+`unverified` criteria that depend on it. An `unverified` criterion appears
+only there, not on the "Not checked" line. Put nothing about such a document
+in the findings or in the questions for the author.
+
+Wording rules for a session without `first-read`:
+
+- Use the active voice, and name who acts.
+- Put one fact or one instruction in each sentence.
+- Use one term for one thing, and use the story's own terms.
+- Write every word. Do not drop articles, and do not use shorthand.
+- Use plain words. Leave out idioms and hedges.
 
 Report for an item that is not a story:
 
