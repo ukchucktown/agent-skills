@@ -1,0 +1,56 @@
+{
+  "clinic": {
+    "set": "clinic",
+    "reference": true,
+    "reports": true,
+    "must_find": [
+      {"criterion": "overlap", "stories": ["CL-3", "CL-7"], "as": "finding", "severity": ["material", "minor"]},
+      {"criterion": "contradiction", "stories": ["CL-3", "CL-5"], "as": "finding", "severity": ["blocking"]},
+      {"criterion": "contradiction", "reference": "R7", "as": "finding", "severity": ["material"]},
+      {"criterion": "dependency", "stories": ["CL-6", "CL-3"], "as": "finding", "severity": ["material"]},
+      {"criterion": "missing-capability", "stories": ["CL-8"], "as": "question"},
+      {"criterion": "coverage", "reference": "R6", "as": "finding", "severity": ["material", "blocking"]},
+      {"criterion": "traceability", "stories": ["CL-9"], "as": "question"},
+      {"criterion": "terms", "as": "either", "stories": ["CL-5"]}
+    ],
+    "must_not_find": [
+      {"criterion": "overlap", "stories": ["CL-3", "CL-10"]},
+      {"criterion": "contradiction", "stories": ["CL-3", "CL-10"]},
+      {"criterion": "dependency", "stories": ["CL-4", "CL-3"]},
+      {"criterion": "coverage", "reference": "R8"}
+    ],
+    "must_note": [
+      {"story": "CL-6", "answered_by": "CL-3"}
+    ],
+    "skipped_exactly": []
+  },
+  "clinic-no-reference": {
+    "set": "clinic",
+    "reference": false,
+    "reports": false,
+    "must_find": [
+      {"criterion": "overlap", "stories": ["CL-3", "CL-7"], "as": "finding"},
+      {"criterion": "contradiction", "stories": ["CL-3", "CL-5"], "as": "finding", "severity": ["blocking"]},
+      {"criterion": "dependency", "stories": ["CL-6", "CL-3"], "as": "finding", "severity": ["material"]}
+    ],
+    "must_not_find": [
+      {"criterion": "overlap", "stories": ["CL-3", "CL-10"]},
+      {"criterion": "dependency", "stories": ["CL-4", "CL-3"]},
+      {"criterion": "contradiction", "reference": "R7"}
+    ],
+    "must_note": [],
+    "no_notes": true,
+    "skipped_exactly": ["coverage", "traceability"]
+  },
+  "clean": {
+    "set": "clean",
+    "reference": false,
+    "reports": false,
+    "must_find": [],
+    "must_not_find": [],
+    "must_note": [],
+    "no_findings": true,
+    "no_notes": true,
+    "skipped_exactly": ["coverage", "traceability"]
+  }
+}
