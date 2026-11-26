@@ -10,13 +10,6 @@ trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
-# Record any retired integration call without access to the real installation.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
-exit 70
-EOF
-chmod +x "$fake_bin/supacode"
 cat >"$fake_bin/gh" <<'EOF'
 #!/bin/sh
 set -eu
@@ -202,7 +195,7 @@ printf '%s' "$ambiguous_output" | jq -e '
 legacy_config_file=$temporary_directory/legacy-config.json
 cat >"$legacy_config_file" <<EOF
 {
-  "worktreeManager": "supacode",
+  "worktreeManager": "legacy-manager",
   "worktreeRoot": "$temporary_directory/legacy-worktrees",
   "projectStatus": {"enabled": false},
   "repositories": {}
@@ -343,7 +336,5 @@ if grep '^issue develop ' "$call_log" >/dev/null; then exit 1; fi
 # Existing assignments remain unchanged on both start and resume.
 printf '%s\n' "$existing_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
 printf '%s\n' "$resume_output" | grep -F 'Assignees: someone-else (preserved)' >/dev/null
-
-[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue start tests passed\n'

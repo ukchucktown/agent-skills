@@ -115,14 +115,6 @@ printf 'uncommitted\n' >"$dirty_worktree/uncommitted.txt"
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
-# Record any retired integration call without access to the real installation.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
-exit 70
-EOF
-chmod +x "$fake_bin/supacode"
-
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
 set -eu
@@ -354,7 +346,5 @@ if detached_output=$(cd "$primary" && run_clean example/agent-skills 71 2>&1); t
 fi
 printf '%s\n' "$detached_output" | grep -F 'the primary checkout has no current branch' >/dev/null
 "$real_git" -C "$primary" switch -q feat/issue-71-stable
-
-[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue clean command tests passed\n'

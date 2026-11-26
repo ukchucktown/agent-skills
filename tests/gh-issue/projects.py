@@ -296,7 +296,7 @@ else:
     def test_retired_manager_settings_are_ignored_at_every_tier(self):
         for tier in ('global', 'organization', 'repository', 'invocation'):
             with self.subTest(tier=tier):
-                setting = {'worktreeManager': 'supacode'}
+                setting = {'worktreeManager': 'legacy-manager'}
                 config = {'global': setting,
                           'organization': {'organizations': {'org': setting}},
                           'repository': {'repositories': {'org/repo': setting}},

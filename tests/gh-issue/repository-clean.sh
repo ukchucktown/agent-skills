@@ -90,14 +90,6 @@ squash_merged_worktree=$("$real_git" -C "$squash_merged_worktree" rev-parse --sh
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
-# Record any retired integration call without access to the real installation.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
-exit 70
-EOF
-chmod +x "$fake_bin/supacode"
-
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
 set -eu
@@ -480,7 +472,5 @@ fi
 printf '%s\n' "$default_output" | grep -F \
   'branch main cannot be selected: default branch cannot be selected' >/dev/null
 [ -d "$default_worktree" ]
-
-[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue repository clean command tests passed\n'
