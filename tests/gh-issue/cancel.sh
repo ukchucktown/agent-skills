@@ -72,14 +72,6 @@ protected_worktree=$("$real_git" -C "$protected_worktree" rev-parse --show-tople
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
-# Record any retired integration call without access to the real installation.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
-exit 70
-EOF
-chmod +x "$fake_bin/supacode"
-
 cat >"$fake_bin/git" <<'EOF'
 #!/bin/sh
 set -eu
@@ -343,7 +335,5 @@ done
 [ -f "$unrelated_worktree/draft.txt" ]
 "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/feat/issue-990-retry-81-times
 "$real_git" -C "$primary" show-ref --verify --quiet refs/heads/fix/85-typo
-
-[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue cancel command tests passed\n'

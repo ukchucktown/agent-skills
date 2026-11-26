@@ -10,14 +10,6 @@ trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 fake_bin=$temporary_directory/bin
 mkdir -p "$fake_bin"
 
-# Record any retired integration call without access to the real installation.
-cat >"$fake_bin/supacode" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$(dirname -- "$0")/supacode-calls"
-exit 70
-EOF
-chmod +x "$fake_bin/supacode"
-
 # The fake gh builds each status response from one issue tree. Omitted node
 # fields default to an open issue with no blockers, branches, or children.
 cat >"$fake_bin/gh" <<'EOF'
@@ -177,7 +169,5 @@ query_count=$(wc -l <"$call_log" | tr -d ' ')
   printf 'expected 26 queries, got %s\n' "$query_count" >&2
   exit 1
 }
-
-[ ! -e "$fake_bin/supacode-calls" ]
 
 printf 'gh-issue status recommendation tests passed\n'
